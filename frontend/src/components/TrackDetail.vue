@@ -89,11 +89,7 @@
                   <select v-model="searchSource" class="bg-slate-800 border border-slate-600 rounded px-3 py-2 text-sm text-slate-200 focus:border-indigo-500 focus:outline-none">
                       <option value="qq">QQ音乐</option>
                       <option value="netease">网易云音乐</option>
-                      <option value="spotify">Spotify</option>
                       <option value="itunes">iTunes Global</option>
-                      <option value="musicbrainz">MusicBrainz</option>
-                      <option value="kuwo">酷我音乐</option>
-                      <option value="kugou">酷狗音乐</option>
                   </select>
                   
                   <div class="flex-1 relative">
@@ -127,7 +123,7 @@
                              <div class="flex items-center gap-4">
                                  <!-- Cover Preview box -->
                                  <div class="w-12 h-12 bg-slate-900 rounded border border-slate-700 overflow-hidden flex-shrink-0 flex items-center justify-center text-slate-600">
-                                      <img v-if="res.coverUrl" :src="res.coverUrl" class="w-full h-full object-cover" />
+                                      <img v-if="res.coverUrl" :src="'/api/proxy-image?url='+encodeURIComponent(res.coverUrl)" class="w-full h-full object-cover" />
                                       <span v-else>♪</span>
                                  </div>
                                  <div class="flex flex-col">
@@ -168,8 +164,10 @@
 import { ref, watch } from 'vue';
 import axios from 'axios';
 import { useI18n } from 'vue-i18n';
+import { useToast } from '../composables/useToast';
 
 const { t } = useI18n({ useScope: 'global' });
+const { showToast } = useToast();
 
 const props = defineProps<{
   isOpen: boolean;
@@ -231,7 +229,7 @@ const doSearch = async () => {
         }
     } catch (e) {
         console.error(e);
-        alert('检索失败 (Search Failed). Check backend logs.');
+        showToast('检索失败 (Search Failed). Check backend logs.');
     } finally {
         isSearching.value = false;
         hasSearched.value = true;
@@ -243,12 +241,12 @@ const applyMetadata = (resData: any) => {
     form.value.artist = resData.artist || '';
     form.value.album = resData.album || '';
     // Optional: we don't automatically override manual lyrics here, but we could add a warning or confirm.
-    alert('信息已填充！请检查并点击下方"保存信息"进行物理写入。\nNote: This has filled the left form. Dont forget to SAVE.');
+    showToast('信息已填充！请检查并点击下方"保存信息"进行物理写入。');
 };
 
 const autoFetchLyrics = async () => {
     // This could just auto fetch lyrics from LRCLIB using current title/artist
-    alert('This feature uses the background lyrics engine to find lyrics for the current title and artist.');
+    showToast('此功能即将实现 (Background Engine integration pending)');
 };
 
 const onFileChange = async (event: Event) => {
@@ -274,7 +272,7 @@ const onFileChange = async (event: Event) => {
             }
         } catch (e) {
             console.error('Failed to upload cover:', e);
-            alert('Failed to upload cover art.');
+            showToast('Failed to upload cover art.');
         } finally {
             // Reset input
             target.value = '';
@@ -317,7 +315,7 @@ const save = async () => {
     }
   } catch (e) {
     console.error(e);
-    alert('Failed to save.');
+    showToast('Failed to save.');
   } finally {
     saving.value = false;
   }

@@ -6,6 +6,7 @@ import path from 'path';
 import fs from 'fs';
 import multer from 'multer';
 import NodeID3 from 'node-id3';
+import axios from 'axios';
 
 dotenv.config();
 
@@ -17,7 +18,7 @@ if (!fs.existsSync(dataDir)) {
 
 import { db } from './db';
 import { scanLibrary } from './scanner';
-import { processPendingTracks, searchITunes, searchNetease, fetchNeteaseLyrics, fetchLyrics } from './scraper';
+import { processPendingTracks, searchITunes, searchNetease, searchQQMusic, fetchNeteaseLyrics, fetchLyrics } from './scraper';
 
 const app = express();
 const PORT = process.env.PORT || 8002;
@@ -107,11 +108,33 @@ app.get('/api/tracks', (req, res) => {
             }
         });
 
+        // Check if songs have lyrics efficiently
+        const tracksWithMeta = currentTracks.map(track => {
+            let hasLyrics = false;
+            try {
+                if (fs.existsSync(track.filepath)) {
+                    if (track.extension === '.mp3') {
+                        const tags = NodeID3.read(track.filepath);
+                        hasLyrics = !!(tags.unsynchronisedLyrics || tags.synchronisedLyrics);
+                    } else if (track.extension === '.flac') {
+                        const Metaflac = require('metaflac-js');
+                        const flac = new Metaflac(track.filepath);
+                        hasLyrics = flac.getVorbisComment('LYRICS') !== null || flac.getVorbisComment('UNSYNCEDLYRICS') !== null;
+                    }
+                }
+            } catch (err) { /* ignore errors */ }
+
+            return {
+                ...track,
+                hasLyrics
+            };
+        });
+
         res.json({
             success: true,
             data: {
                 folders: Array.from(subfolders).sort(),
-                tracks: currentTracks
+                tracks: tracksWithMeta
             }
         });
     } catch (e: any) {
@@ -163,6 +186,84 @@ app.post('/api/tracks/organize', (req, res) => {
         })();
 
         res.json({ success: true, count: organizedCount });
+    } catch (e: any) {
+        res.status(500).json({ success: false, error: e.message });
+    }
+});
+
+// Advanced: Batch delete feature
+app.post('/api/tracks/delete', (req, res) => {
+    try {
+        const { ids } = req.body;
+        if (!Array.isArray(ids)) return res.status(400).json({ success: false, error: 'Invalid ids' });
+
+        let deletedCount = 0;
+        const getStmt = db.prepare('SELECT filepath FROM tracks WHERE id = ?');
+        const deleteStmt = db.prepare('DELETE FROM tracks WHERE id = ?');
+
+        db.transaction(() => {
+            for (const id of ids) {
+                const track = getStmt.get(id) as any;
+                if (track) {
+                    try {
+                        if (fs.existsSync(track.filepath)) {
+                            fs.unlinkSync(track.filepath);
+                        }
+                        deleteStmt.run(id);
+                        deletedCount++;
+                    } catch (err) {
+                        console.error(`Failed to delete file ${track.filepath}:`, err);
+                    }
+                }
+            }
+        })();
+
+        res.json({ success: true, count: deletedCount });
+    } catch (e: any) {
+        res.status(500).json({ success: false, error: e.message });
+    }
+});
+
+// Advanced: Deduplication finder
+app.get('/api/tracks/duplicates', (req, res) => {
+    try {
+        const duplicates = db.prepare(`
+            SELECT title, COUNT(*) as c
+            FROM tracks 
+            WHERE title !='' AND title IS NOT NULL
+            GROUP BY title
+            HAVING c > 1
+        `).all() as any[];
+
+        const result = duplicates.map(group => {
+            const files = db.prepare('SELECT id, filepath, filename, extension, scrape_status, artist FROM tracks WHERE title = ?').all(group.title) as any[];
+            const mappedFiles = files.map(f => {
+                let size = 0;
+                try { size = fs.statSync(f.filepath).size; } catch (e) { }
+                return {
+                    id: f.id,
+                    filepath: f.filepath,
+                    filename: f.filename,
+                    size: size,
+                    extension: f.extension,
+                    status: f.scrape_status,
+                    artist: f.artist || 'Unknown Artist'
+                };
+            });
+            // sort by size descending so usually high quality is on top
+            mappedFiles.sort((a, b) => b.size - a.size);
+
+            const uniqueArtists = Array.from(new Set(mappedFiles.map(f => f.artist)));
+            const displayArtist = uniqueArtists.join(' / ');
+
+            return {
+                title: group.title,
+                artist: displayArtist,
+                files: mappedFiles
+            };
+        });
+
+        res.json({ success: true, data: result });
     } catch (e: any) {
         res.status(500).json({ success: false, error: e.message });
     }
@@ -249,6 +350,29 @@ app.get('/api/tracks/:id/cover', (req, res) => {
     }
 });
 
+// Proxy to bypass strict CDN Referer protections (e.g. NetEase default generic pictures placeholder fix)
+app.get('/api/proxy-image', async (req, res) => {
+    try {
+        const targetUrl = req.query.url as string;
+        if (!targetUrl) return res.status(400).send('No url');
+
+        const response = await axios.get(targetUrl, {
+            responseType: 'arraybuffer',
+            headers: {
+                'Referer': targetUrl.includes('qq.com') || targetUrl.includes('gtimg.cn') ? 'https://y.qq.com/' : 'https://music.163.com/',
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
+            },
+            timeout: 10000
+        });
+
+        res.set('Content-Type', response.headers['content-type'] as string);
+        res.set('Cache-Control', 'public, max-age=86400');
+        res.send(response.data);
+    } catch (e: any) {
+        res.status(404).send('Proxy failed');
+    }
+});
+
 app.get('/api/tracks/:id/lyrics', (req, res) => {
     try {
         const id = req.params.id;
@@ -285,8 +409,10 @@ app.get('/api/search-metadata', async (req, res) => {
         let results = [];
         if (source === 'itunes') {
             results = await searchITunes(query);
+        } else if (source === 'qq') {
+            results = await searchQQMusic(query);
         } else {
-            // Netease acts as fallback for 'netease', 'qq', 'spotify' placeholders
+            // Netease acts as fallback for 'netease', 'spotify' placeholders
             results = await searchNetease(query);
         }
 

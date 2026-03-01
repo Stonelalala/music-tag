@@ -70,17 +70,17 @@ export async function fetchMetadata(title: string, artist: string) {
 // NetEase Cloud Music Search generic
 export async function searchNetease(query: string) {
     try {
-        const searchUrl = `https://music.163.com/api/search/get/?type=1&limit=10&s=${encodeURIComponent(query)}`;
+        const searchUrl = `https://music.163.com/api/cloudsearch/pc?type=1&limit=15&s=${encodeURIComponent(query)}`;
         const searchRes = await axios.get(searchUrl, { timeout: 10000 });
         const songs = searchRes.data?.result?.songs || [];
 
         return songs.map((song: any) => ({
             id: song.id,
             title: t2s(song.name || ''),
-            artist: t2s(song.artists ? song.artists.map((a: any) => a.name).join(', ') : ''),
-            album: t2s(song.album?.name || ''),
-            year: song.album?.publishTime ? new Date(song.album.publishTime).getFullYear().toString() : undefined,
-            coverUrl: null // Netease lists don't always have covers directly here to avoid heavy queries.
+            artist: t2s(song.ar ? song.ar.map((a: any) => a.name).join(', ') : (song.artists ? song.artists.map((a: any) => a.name).join(', ') : '')),
+            album: t2s(song.al?.name || song.album?.name || ''),
+            year: song.publishTime ? new Date(song.publishTime).getFullYear().toString() : undefined,
+            coverUrl: song.al?.picUrl || null
         }));
     } catch (e: any) { return []; }
 }
@@ -134,6 +134,67 @@ export async function fetchNeteaseLyrics(songId: number) {
     return null;
 }
 
+// QQ Music Fallback
+export async function fetchQQMusicMetadata(title: string, artist: string) {
+    try {
+        const term = encodeURIComponent(`${title} ${artist}`);
+        const searchUrl = `https://c.y.qq.com/soso/fcgi-bin/client_search_cp?p=1&n=1&w=${term}&format=json`;
+        const searchRes = await axios.get(searchUrl, { timeout: 7000 });
+        const song = searchRes.data?.data?.song?.list?.[0];
+
+        if (song) {
+            const coverUrl = song.albummid ? `https://y.gtimg.cn/music/photo_new/T002R500x500M000${song.albummid}.jpg` : null;
+            return {
+                title: t2s(song.songname || ''),
+                artist: t2s(song.singer ? song.singer.map((s: any) => s.name).join(', ') : artist),
+                album: t2s(song.albumname || ''),
+                year: undefined,
+                genre: 'Pop',
+                coverUrl: coverUrl,
+                qqSongMid: song.songmid
+            };
+        }
+    } catch (e: any) {
+        console.error(`[Scraper] QQ Music fallback failed for ${title} - ${artist}: ${e.message}`);
+    }
+    return null;
+}
+
+export async function fetchQQMusicLyrics(songMid: string) {
+    try {
+        const url = `https://c.y.qq.com/lyric/fcgi-bin/fcg_query_lyric_new.fcg?songmid=${songMid}&format=json`;
+        const res = await axios.get(url, {
+            timeout: 5000,
+            headers: { 'Referer': 'https://y.qq.com/' }
+        });
+        if (res.data?.lyric) {
+            const decoded = Buffer.from(res.data.lyric, 'base64').toString('utf8');
+            // QQ Music lyrics may include some weird html encodings like &#58; 
+            const cleanLyric = decoded.replace(/&#(\d+);/g, (match: string, dec: string) => String.fromCharCode(Number(dec)));
+            return t2s(cleanLyric);
+        }
+    } catch (e) { }
+    return null;
+}
+
+export async function searchQQMusic(query: string) {
+    try {
+        const term = encodeURIComponent(query);
+        const searchUrl = `https://c.y.qq.com/soso/fcgi-bin/client_search_cp?p=1&n=15&w=${term}&format=json`;
+        const searchRes = await axios.get(searchUrl, { timeout: 7000 });
+        const songs = searchRes.data?.data?.song?.list || [];
+
+        return songs.map((song: any) => ({
+            id: song.songmid,
+            title: t2s(song.songname || ''),
+            artist: t2s(song.singer ? song.singer.map((s: any) => s.name).join(', ') : ''),
+            album: t2s(song.albumname || ''),
+            year: undefined,
+            coverUrl: song.albummid ? `https://y.gtimg.cn/music/photo_new/T002R300x300M000${song.albummid}.jpg` : null
+        }));
+    } catch (e: any) { return []; }
+}
+
 export async function processPendingTracks() {
     console.log(`🚀 [Scraper] Starting to process pending tracks...`);
 
@@ -176,16 +237,26 @@ export async function processPendingTracks() {
             metadata = await fetchNeteaseMetadata(qTitle, qArtist);
             if (metadata) {
                 console.log(`   --> Found match on NetEase: ${metadata.title} - ${metadata.album}`);
+            } else {
+                console.log(`   --> NetEase failed, trying QQ Music (QQ音乐)...`);
+                metadata = await fetchQQMusicMetadata(qTitle, qArtist);
+                if (metadata) {
+                    console.log(`   --> Found match on QQ Music: ${metadata.title} - ${metadata.album}`);
+                }
             }
         }
 
         if (metadata) {
             let lyrics = await fetchLyrics(metadata.title, metadata.artist);
 
-            // If lrclib fails and we have a netease ID, fallback to netease lyrics
+            // Fallback lyrics retrieval chain
             if (!lyrics && metadata.neteaseId) {
                 console.log(`   --> LRCLIB lyrics failed, trying NetEase lyrics...`);
                 lyrics = await fetchNeteaseLyrics(metadata.neteaseId);
+            }
+            if (!lyrics && metadata.qqSongMid) {
+                console.log(`   --> NetEase/LRCLIB lyrics failed or skipping, trying QQ Music lyrics...`);
+                lyrics = await fetchQQMusicLyrics(metadata.qqSongMid);
             }
 
             let coverBuffer: Buffer | undefined;
@@ -196,8 +267,15 @@ export async function processPendingTracks() {
                     const imgRes = await axios.get(metadata.coverUrl, { responseType: 'arraybuffer' });
                     coverBuffer = Buffer.from(imgRes.data, 'binary');
                     coverMime = imgRes.headers['content-type'];
+
+                    // Save physical cover to disk with the same filename as the track
+                    const coverPath = path.join(path.dirname(track.filepath), `${path.parse(track.filepath).name}.jpg`);
+                    if (!fs.existsSync(coverPath)) {
+                        fs.writeFileSync(coverPath, coverBuffer);
+                        console.log(`   ✅ Saved physical cover to ${coverPath}`);
+                    }
                 } catch (imgErr) {
-                    console.error(`   --> Failed to download cover art.`);
+                    console.error(`   --> Failed to download or save cover art.`);
                 }
             }
 

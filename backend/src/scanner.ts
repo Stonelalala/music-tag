@@ -42,7 +42,7 @@ export async function scanLibrary(musicDir: string) {
                             const common = metadata.common;
 
                             // Let's generate a stable ID based on path or basic info
-                            const id = crypto.createHash('md5').update(fullPath).digest('hex');
+                            const id = crypto.randomUUID ? crypto.randomUUID() : crypto.randomBytes(16).toString('hex');
 
                             // Insert into database, mark as Pending (0)
                             insertTrack.run({

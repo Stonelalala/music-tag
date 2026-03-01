@@ -24,8 +24,17 @@
               <span class="truncate">{{ folder }}</span>
             </button>
           </li>
-          <li v-if="folders.length === 0 && !currentFolder" class="px-3 py-4 text-xs text-center text-slate-500 opacity-60">
-             ( 无子文件夹 )
+          
+          <!-- Tracks Files in directory -->
+          <li v-for="track in tracks" :key="'sidebar_track_'+track.id">
+            <div class="w-full text-left px-3 py-1.5 rounded text-xs text-slate-400/80 flex items-center gap-2 truncate opacity-80" :title="track.filename">
+              <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="text-slate-600 flex-shrink-0"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></svg>
+              <span class="truncate">{{ track.filename }}</span>
+            </div>
+          </li>
+
+          <li v-if="folders.length === 0 && tracks.length === 0 && !currentFolder" class="px-3 py-4 text-xs text-center text-slate-500 opacity-60">
+             ( 空目录 )
           </li>
         </ul>
       </div>
@@ -36,6 +45,12 @@
              class="w-full px-3 py-2 bg-sky-600/20 text-sky-400 hover:bg-sky-600 hover:text-white rounded border border-sky-600/30 transition flex items-center justify-center gap-2 text-sm">
             <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 20h16a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.93a2 2 0 0 1-1.66-.9l-.82-1.2A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13c0 1.1.9 2 2 2Z"/></svg>
             自动整理目录
+        </button>
+         <button 
+            @click="isDeduplicateModalOpen = true" 
+             class="w-full px-3 py-2 bg-rose-600/10 text-rose-400 hover:bg-rose-600 hover:text-white rounded border border-rose-600/30 transition flex items-center justify-center gap-2 text-sm mt-1">
+            <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" x2="12" y1="15" y2="3"/></svg>
+            查杀重复歌曲
         </button>
       </div>
     </div>
@@ -52,7 +67,7 @@
         
         <div>
           <button 
-            @click="batchRename" 
+            @click="promptBatchRename" 
             :disabled="renaming || tracks.length === 0"
              class="px-4 py-1.5 bg-indigo-600 hover:bg-indigo-500 text-white rounded shadow transition flex items-center gap-2 text-sm disabled:opacity-50">
             <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22a9.97 9.97 0 0 0 7.07-2.93L22 16"/><path d="M22 16h-6"/><path d="M22 16V10"/><path d="M12 2a9.97 9.97 0 0 0-7.07 2.93L2 8"/><path d="M2 8h6"/><path d="M2 8v6"/></svg>
@@ -85,8 +100,11 @@
                           <img :src="`/api/tracks/${track.id}/cover`" @error="onImageError" class="w-full h-full object-cover" />
                       </div>
                       <div class="flex flex-col overflow-hidden">
-                          <span class="font-medium text-slate-200 truncate max-w-xs" :title="track.title">{{ track.title || track.filename }}</span>
-                          <span class="text-xs text-slate-500 font-mono mt-0.5">{{ track.extension }}</span>
+                          <div class="flex items-center gap-2">
+                              <span class="font-medium text-slate-200 truncate max-w-xs" :title="track.title">{{ track.title || track.filename }}</span>
+                              <span v-if="track.hasLyrics" class="text-[10px] bg-emerald-900/40 text-emerald-400 px-1 rounded border border-emerald-700/50 flex-shrink-0 select-none">词</span>
+                          </div>
+                          <span class="text-xs text-slate-500 font-mono mt-0.5 uppercase">{{ track.extension.replace('.', '') }}</span>
                       </div>
                   </div>
               </td>
@@ -123,6 +141,25 @@
       @close="isOrganizeModalOpen = false"
       @organized="refresh" 
     />
+    
+    <DeduplicateModal 
+      :is-open="isDeduplicateModalOpen"
+      @close="isDeduplicateModalOpen = false"
+      @deleted="refresh"
+    />
+    
+    <!-- Confirm Modal -->
+    <div v-if="isConfirmOpen" class="fixed inset-0 z-[60] flex items-center justify-center p-4 backdrop-blur-sm bg-slate-900/60 transition-all">
+        <div class="bg-slate-800 border border-slate-700 rounded-lg shadow-2xl p-6 max-w-sm w-full">
+            <h3 class="text-lg font-medium text-slate-200 mb-2">一键格式化重命名</h3>
+            <p class="text-sm text-slate-400 mb-6">该操作即将把本文件夹内已刮削出信息的全部音频物理重命名为 <code class="bg-slate-900 px-1 py-0.5 rounded text-indigo-300">Artist - Title.ext</code>，是否继续？</p>
+            <div class="flex justify-end gap-3">
+                <button @click="isConfirmOpen = false" class="px-4 py-2 bg-slate-700 hover:bg-slate-600 rounded text-sm text-slate-200 transition">取消</button>
+                <button @click="executeBatchRename" class="px-4 py-2 bg-rose-600 hover:bg-rose-500 text-white rounded text-sm transition font-medium shadow-md shadow-rose-900/20">继续执行</button>
+            </div>
+        </div>
+    </div>
+
   </div>
 </template>
 
@@ -130,8 +167,13 @@
 import { ref, onMounted } from 'vue';
 import axios from 'axios';
 import OrganizeModal from './OrganizeModal.vue';
+import DeduplicateModal from './DeduplicateModal.vue';
+import { useToast } from '../composables/useToast';
 
+const { showToast } = useToast();
 const isOrganizeModalOpen = ref(false);
+const isDeduplicateModalOpen = ref(false);
+const isConfirmOpen = ref(false);
 
 const tracks = ref<any[]>([]);
 const folders = ref<string[]>([]);
@@ -176,20 +218,23 @@ const refresh = () => fetchTracks(currentFolder.value);
 
 const renaming = ref(false);
 
-const batchRename = async () => {
+const promptBatchRename = () => {
     if (!currentFolder.value && tracks.value.length === 0) return;
-    if (!confirm('This will physically rename files in this folder to "Artist - Title.mp3". Continue?')) return;
-    
+    isConfirmOpen.value = true;
+};
+
+const executeBatchRename = async () => {
+    isConfirmOpen.value = false;
     renaming.value = true;
     try {
         const res = await axios.post('/api/tracks/batch-rename', { folder: currentFolder.value });
         if (res.data.success) {
-            alert(res.data.message);
+            showToast(res.data.message);
             refresh();
         }
     } catch (e) {
         console.error(e);
-        alert('Batch rename failed.');
+        showToast('Batch rename failed.');
     } finally {
         renaming.value = false;
     }

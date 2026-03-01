@@ -77,7 +77,7 @@
         </div>
 
         <!-- Toast messages are integrated below -->
-        <div v-if="toastMsg" class="fixed bottom-6 right-6 bg-slate-800 text-cyan-400 text-sm px-4 py-3 rounded-lg border border-slate-700 shadow-xl z-50 animate-bounce">
+        <div v-if="toastMsg" class="fixed top-6 left-1/2 -translate-x-1/2 bg-slate-800 text-cyan-400 text-sm px-5 py-3 rounded-full border border-slate-600 shadow-2xl z-[9999] animate-bounce whitespace-nowrap">
             {{ toastMsg }}
         </div>
 
@@ -94,8 +94,10 @@ import axios from 'axios';
 import { useI18n } from 'vue-i18n';
 import TrackList from './components/TrackList.vue';
 import TrackDetail from './components/TrackDetail.vue';
+import { toastMsg, useToast } from './composables/useToast';
 
 const { t, locale } = useI18n({ useScope: 'global' });
+const { showToast: globalShowToast } = useToast();
 
 interface DashboardStatus {
     success: boolean;
@@ -109,7 +111,6 @@ interface DashboardStatus {
 }
 
 const status = ref<DashboardStatus | null>(null);
-const toastMsg = ref('');
 let pollInterval: any = null;
 
 // Track Detail Drawer State
@@ -139,8 +140,7 @@ const toggleLang = () => {
 };
 
 const showToast = (msgKey: string) => {
-    toastMsg.value = t(msgKey);
-    setTimeout(() => { toastMsg.value = ''; }, 3000);
+    globalShowToast(t(msgKey));
 };
 
 const refreshStatus = async () => {

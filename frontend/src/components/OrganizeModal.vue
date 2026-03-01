@@ -68,6 +68,9 @@
 <script setup lang="ts">
 import { ref } from 'vue';
 import axios from 'axios';
+import { useToast } from '../composables/useToast';
+
+const { showToast } = useToast();
 
 const props = defineProps({
   isOpen: Boolean
@@ -97,7 +100,7 @@ const removeLevel = (index: number) => {
 const confirm = async () => {
     const validLevels = levels.value.filter(l => l.field && (l.field !== 'custom' || l.customValue.trim() !== ''));
     if (validLevels.length === 0) {
-        alert("请输入至少一个有效的目录层级");
+        showToast("请输入至少一个有效的目录层级");
         return;
     }
     
@@ -111,12 +114,12 @@ const confirm = async () => {
             baseDir: baseDir.value
         });
         if (res.data.success) {
-            alert(`成功为您移动并整理了 ${res.data.count} 个音频文件！`);
+            showToast(`成功为您移动并整理了 ${res.data.count} 个音频文件！`);
             emit('organized');
             close();
         }
     } catch (e: any) {
-        alert('文件整理失败: ' + (e.response?.data?.error || e.message));
+        showToast('文件整理失败: ' + (e.response?.data?.error || e.message));
     } finally {
         processing.value = false;
     }
