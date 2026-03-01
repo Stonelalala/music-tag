@@ -41,6 +41,12 @@
                         <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>
                         立刻启动刮削引擎
                     </button>
+                    <!-- Divider -->
+                    <div class="h-px bg-slate-700 mx-2 my-1"></div>
+                    <button @click="isNeteaseOpen = true" class="w-full text-left px-3 py-2 text-sm text-rose-400 hover:bg-rose-500/10 rounded flex items-center gap-2 transition">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2v20"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>
+                        ☁️ 云端直链剥入室 (网易)
+                    </button>
                     <button disabled class="w-full text-left px-3 py-2 text-sm text-slate-500 cursor-not-allowed rounded">
                         数据源与引擎设置 (敬请期待)
                     </button>
@@ -85,6 +91,7 @@
     </main>
     
     <TrackDetail :is-open="isDrawerOpen" :track="selectedTrack" @close="closeEditDrawer" @saved="onTrackSaved" />
+    <NeteaseDownloader :is-open="isNeteaseOpen" @close="isNeteaseOpen = false" @downloaded="onTrackSaved" />
   </div>
 </template>
 
@@ -94,6 +101,7 @@ import axios from 'axios';
 import { useI18n } from 'vue-i18n';
 import TrackList from './components/TrackList.vue';
 import TrackDetail from './components/TrackDetail.vue';
+import NeteaseDownloader from './components/NeteaseDownloader.vue';
 import { toastMsg, useToast } from './composables/useToast';
 
 const { t, locale } = useI18n({ useScope: 'global' });
@@ -117,6 +125,9 @@ let pollInterval: any = null;
 const isDrawerOpen = ref(false);
 const selectedTrack = ref<any>(null);
 const trackListRef = ref<any>(null);
+
+// Netease Drawer State
+const isNeteaseOpen = ref(false);
 
 const openEditDrawer = (track: any) => {
     selectedTrack.value = track;

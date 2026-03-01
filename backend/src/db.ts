@@ -8,7 +8,7 @@ if (!fs.existsSync(dbDataPath)) {
 }
 export const dbPath = path.join(dbDataPath, 'music_tagger.db');
 
-export const db = new Database(dbPath, { verbose: console.log });
+export const db = new Database(dbPath);
 
 // Initialize tables
 db.exec(`

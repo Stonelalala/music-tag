@@ -473,6 +473,99 @@ app.post('/api/tracks/:id', (req, res) => {
     }
 });
 
+import {
+    parseNeteaseUrl,
+    fetchNeteaseSongDetail,
+    fetchNeteasePlaylist,
+    fetchNeteaseDownloadUrl,
+    downloadAndTagNeteaseSong
+} from './netease';
+
+app.post('/api/netease/parse', async (req, res) => {
+    try {
+        const { url, level = 'exhigh', cookie = '' } = req.body;
+        if (!url) return res.status(400).json({ success: false, error: 'No URL provided' });
+
+        const parsed = await parseNeteaseUrl(url);
+
+        if (parsed.type === 'song') {
+            const detail = await fetchNeteaseSongDetail(parsed.id);
+            if (!detail) return res.status(404).json({ success: false, error: 'Song not found' });
+
+            const dl = await fetchNeteaseDownloadUrl(parsed.id, level, cookie);
+
+            res.json({
+                success: true,
+                type: 'song',
+                data: [{
+                    ...detail,
+                    downloadable: !!(dl && dl.url),
+                    neteaseId: parsed.id
+                }]
+            });
+        } else if (parsed.type === 'playlist') {
+            const playlist = await fetchNeteasePlaylist(parsed.id);
+            if (!playlist) return res.status(404).json({ success: false, error: 'Playlist not found' });
+
+            // To prevent massive API delay, just return the basic info. Frontend or backend queue will batch fetch detailed tracks.
+            res.json({
+                success: true,
+                type: 'playlist',
+                name: playlist.name,
+                coverUrl: playlist.coverUrl,
+                trackIds: playlist.trackIds
+            });
+        } else {
+            res.status(400).json({ success: false, error: 'URL could not be parsed' });
+        }
+    } catch (e: any) {
+        console.error('[Netease Parse Error]', e);
+        res.status(500).json({ success: false, error: e.message || 'Unknown Server Error' });
+    }
+});
+
+app.post('/api/netease/download', async (req, res) => {
+    try {
+        const { id, level = 'exhigh', cookie = '' } = req.body;
+        if (!id) return res.status(400).json({ success: false, error: 'Song ID is required' });
+
+        const result = await downloadAndTagNeteaseSong(id, MUSIC_DIR, db, level, cookie);
+
+        res.json(result);
+    } catch (e: any) {
+        console.error('[Netease Download Error]', e);
+        res.status(500).json({ success: false, error: e.message || 'Unknown Server Error' });
+    }
+});
+
+import { parseQQMusicUrl, downloadAndTagQQMusicSong } from './qqmusic';
+
+app.post('/api/qq/parse', async (req, res) => {
+    try {
+        const { url, level = 'exhigh', cookie = '' } = req.body;
+        if (!url) return res.status(400).json({ success: false, error: 'No URL provided' });
+
+        const parsed = await parseQQMusicUrl(url, level, cookie);
+        res.json({ success: true, ...parsed });
+    } catch (e: any) {
+        console.error('[QQMusic Parse Error]', e);
+        res.status(500).json({ success: false, error: e.message || 'Unknown Server Error' });
+    }
+});
+
+app.post('/api/qq/download', async (req, res) => {
+    try {
+        const { id, level = 'exhigh', cookie = '' } = req.body;
+        if (!id) return res.status(400).json({ success: false, error: 'Song ID is required' });
+
+        const filepath = await downloadAndTagQQMusicSong(MUSIC_DIR, id, level, cookie);
+        res.json({ success: true, filepath });
+    } catch (e: any) {
+        console.error('[QQMusic Download Error]', e);
+        res.status(500).json({ success: false, error: e.message || 'Unknown Server Error' });
+    }
+});
+
 // STARTUP: Setup Cron Job
 // Scrape Schedule (Default everyday at 2 AM)
 const CRON_SCHEDULE = process.env.CRON_SCHEDULE || '0 2 * * *';
