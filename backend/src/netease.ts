@@ -14,13 +14,13 @@ export async function parseNeteaseUrl(url: string) {
     let id = '';
 
     const songMatch = url.match(/song[\?\&]id=(\d+)/) || url.match(/\/song\/(\d+)/);
-    if (songMatch) {
+    if (songMatch && songMatch[1]) {
         type = 'song';
         id = songMatch[1];
     }
 
     const playlistMatch = url.match(/playlist[\?\&]id=(\d+)/) || url.match(/\/playlist\/(\d+)/);
-    if (playlistMatch) {
+    if (playlistMatch && playlistMatch[1]) {
         type = 'playlist';
         id = playlistMatch[1];
     }
@@ -43,6 +43,7 @@ export async function fetchNeteaseSongDetail(id: number | string) {
                 artist: t2s(song.ar ? song.ar.map((a: any) => a.name).join(', ') : ''),
                 album: t2s(song.al?.name || ''),
                 coverUrl: song.al?.picUrl || null,
+                duration: song.dt ? song.dt / 1000 : 0, // Convert ms to s
             };
         }
     } catch (e: any) {
@@ -90,45 +91,45 @@ async function fetchFallbackAudioUrl(id: number | string, title: string, artist:
 }
 
 export async function fetchNeteaseDownloadUrl(id: number | string, level: string = 'exhigh', cookie: string = '') {
-    try {
-        // level: standard, higher, exhigh, lossless, hires
-        const params: any = { id: id.toString(), level: level as any };
-        if (cookie) params.cookie = cookie;
+    const levels = ['jymaster', 'hires', 'lossless', 'exhigh', 'higher', 'standard'];
+    let startIndex = levels.indexOf(level);
+    if (startIndex === -1) startIndex = 3; // default exhigh
 
-        const res = await song_url_v1(params);
-        if (res.status === 200 && (res.body as any).data && Array.isArray((res.body as any).data)) {
-            const data = (res.body as any).data[0];
+    // 尝试阶梯式降级请求，直到拿到真实的 URL
+    for (let i = startIndex; i < levels.length; i++) {
+        const currentLevel = levels[i];
+        try {
+            const params: any = { id: id.toString(), level: currentLevel as any };
+            if (cookie) params.cookie = cookie;
 
-            // 剔除 30s 试听版本，或者由于防盗链查不到 url 都可以视为被网易封杀！
-            if (data.freeTrialInfo || data.freeTimeTrialPrivilege?.resConsumable === false || !data.url) {
-                console.warn(`[Netease] 主链接 ID:${id} 被 VIP/防盗链墙阻挡！启用 Meting 音源代理替换...`);
-                // 触发狸猫换太子，向前端伪造其可被拉取，并在下发时自动导到代理网关
-                return {
-                    url: `https://api.injahow.cn/meting/?server=netease&type=url&id=${id}`,
-                    size: 0,
-                    type: 'mp3',
-                    level: 'standard',
-                    usedFallback: true
-                };
+            const res = await song_url_v1(params);
+            if (res.status === 200 && (res.body as any).data && Array.isArray((res.body as any).data)) {
+                const data = (res.body as any).data[0];
+
+                // 如果有 URL 且不是试听版
+                if (data.url && !data.freeTrialInfo && data.freeTimeTrialPrivilege?.resConsumable !== false) {
+                    console.log(`[Netease API] Hit! Level: ${currentLevel}, Real Level: ${data.level}`);
+                    return {
+                        url: data.url,
+                        size: data.size,
+                        type: data.type || 'mp3',
+                        level: data.level
+                    };
+                }
             }
-
-            return {
-                url: data.url,
-                size: data.size,
-                type: data.type || 'mp3',
-                level: data.level // 实际上平台给的音质
-            };
+        } catch (e) {
+            console.error(`Fetch netease song url failed at level ${currentLevel}:`, e);
         }
-    } catch (e: any) {
-        console.error('Fetch netease song url failed:', e);
     }
 
-    // 如果全挂了，最终强制兜底
+    // 如果原生所有等级都失败，不再返回空，而是尝试跨站构造 320k 高音质代理链接
+    // 优先使用对直连鉴权较宽松的镜像节点
+    console.warn(`[Netease: Safe-Proxy] 启动 320kbps 高质量镜像通道 ID:${id}`);
     return {
-        url: `https://api.injahow.cn/meting/?server=netease&type=url&id=${id}`,
+        url: `https://api.injahow.cn/meting/?server=netease&type=url&id=${id}&br=320`,
         size: 0,
         type: 'mp3',
-        level: 'standard',
+        level: 'exhigh',
         usedFallback: true
     };
 }
@@ -145,15 +146,27 @@ export async function fetchNeteaseLyric(id: number | string) {
     return null;
 }
 
-async function fetchFallbackFromMetingTencent(songName: string, singerName: string): Promise<string | null> {
+export async function fetchFallbackFromMetingTencent(songName: string, singerName: string, level: string = 'exhigh'): Promise<string | null> {
     try {
-        const rawSinger = singerName.split(/[,、&]+/)[0].trim();
+        const rawSinger = (singerName || '').split(/[,、&]+/)[0].trim();
         const keyword = encodeURIComponent(`${rawSinger} ${songName}`);
-        const res = await axios.get(`https://api.injahow.cn/meting/?server=tencent&type=search&name=${keyword}`, { timeout: 8000 });
-        if (Array.isArray(res.data) && res.data.length > 0) {
-            const first = res.data[0];
-            if (first.url) return first.url; // Meting 接口有些时候直接在 search 返回 url!
-            if (first.id) return `https://api.injahow.cn/meting/?server=tencent&type=url&id=${first.id}`;
+
+        // 尝试从 i-meto 检索 ID
+        const searchUrl = `https://api.i-meto.com/meting/api?server=tencent&type=search&id=${keyword}`;
+        const res = await axios.get(searchUrl, { timeout: 8000 });
+
+        if (res && res.data && Array.isArray(res.data) && res.data.length > 0) {
+            const matches = res.data.filter((s: any) =>
+                s.author?.includes(rawSinger) || s.title?.includes(songName)
+            );
+            const target = matches[0] || res.data[0];
+
+            if (target && target.id) {
+                // 不要盲目用 target.url (通常是 128k)，尝试在无需鉴权的 injahow 节点上开启码率提级
+                const br = (level === 'lossless' || level === 'hires') ? 'flac' : '320';
+                console.log(`[Tencent: Quality-Up] ⏫ 尝试在镜像节点请求 ${br} 档位...`);
+                return `https://api.injahow.cn/meting/?server=tencent&type=url&id=${target.id}&br=${br}`;
+            }
         }
     } catch (e) {
         console.error('[Tencent Fallback Error]', e);
@@ -161,22 +174,46 @@ async function fetchFallbackFromMetingTencent(songName: string, singerName: stri
     return null;
 }
 
-async function fetchFallbackFromKugou(songName: string, singerName: string): Promise<string | null> {
+export async function fetchFallbackFromBilibili(songName: string, singerName: string): Promise<string | null> {
     try {
-        const rawSinger = singerName.split(/[,、&]+/)[0].trim();
+        const rawSinger = (singerName || '').split(/[,、&]+/)[0].trim();
+        const keyword = encodeURIComponent(`${rawSinger} ${songName}`);
+
+        const searchUrl = `https://api.i-meto.com/meting/api?server=bilibili&type=search&id=${keyword}`;
+        const res = await axios.get(searchUrl, { timeout: 8000 });
+
+        if (res && res.data && Array.isArray(res.data) && res.data.length > 0) {
+            const target = res.data[0];
+            if (target && target.url) {
+                console.log(`[Bilibili: Search-Hit] ✔️ 命中外部节点: ${target.title}`);
+                return target.url;
+            }
+        }
+    } catch (e) {
+        console.error('[Bilibili Fallback Error]', e);
+    }
+    return null;
+}
+
+export async function fetchFallbackFromKugou(songName: string, singerName: string): Promise<string | null> {
+    try {
+        const rawSinger = (singerName || '').split(/[,、&]+/)[0].trim();
         const keyword = encodeURIComponent(`${rawSinger} ${songName}`);
         const searchUrl = `http://mobilecdn.kugou.com/api/v3/search/song?format=json&keyword=${keyword}&page=1&pagesize=1&showtype=1`;
         const searchRes = await axios.get(searchUrl, { timeout: 8000 });
         const info = searchRes.data?.data?.info;
-        if (!info || info.length === 0) return null;
+        if (!info || !Array.isArray(info) || info.length === 0) return null;
 
-        const hash = info[0].hash;
-        if (!hash) return null;
+        const song = info[0];
+        if (song) {
+            const hash = (song.hash as string);
+            if (!hash) return null;
 
-        const playUrl = `http://m.kugou.com/app/i/getSongInfo.php?cmd=playInfo&hash=${hash}`;
-        const playRes = await axios.get(playUrl, { timeout: 8000 });
-        if (playRes.data && playRes.data.url) {
-            return playRes.data.url;
+            const playUrl = `http://m.kugou.com/app/i/getSongInfo.php?cmd=playInfo&hash=${hash}`;
+            const playRes = await axios.get(playUrl, { timeout: 8000 });
+            if (playRes.data && playRes.data.url) {
+                return (playRes.data.url as string);
+            }
         }
     } catch (e) {
         console.error('[Kugou Fallback Error]', e);
@@ -184,20 +221,74 @@ async function fetchFallbackFromKugou(songName: string, singerName: string): Pro
     return null;
 }
 
+import { probeAudioQuality } from './utils/probe';
+
 export async function downloadAndTagNeteaseSong(id: number | string, musicDir: string, db: Database, level: string = 'exhigh', cookie: string = '') {
     try {
         const detail = await fetchNeteaseSongDetail(id);
         if (!detail) throw new Error(`Song detail not found for ID ${id}`);
 
         let dlInfo = await fetchNeteaseDownloadUrl(id, level, cookie);
+        let finalHitUrl = '';
+        let probeResult: any = { valid: false, mime: 'audio/mpeg', size: 0, bitrate: 0 };
+        let requiresFallback = false;
 
         if (!dlInfo || !dlInfo.url) {
-            throw new Error(`已将 ${detail.title} 拦截！极度异常状态，Meting 解析代理彻底失效。`);
+            console.warn(`[Netease: Direct-Fail] 原生和基础代理通道地址获取失败，强制切换至全网平替模式 ID:${id}`);
+            requiresFallback = true;
+        } else {
+            // 原生或基础代理存在，先探测一下
+            finalHitUrl = dlInfo.url;
+            probeResult = await probeAudioQuality(finalHitUrl, 'netease', (detail as any).duration || 0);
+
+            if (!probeResult.valid) {
+                console.warn(`[Netease] 探针检测到原始链接无效 (格式: ${probeResult.mime})，尝试全网搜索补天...`);
+                requiresFallback = true;
+            }
+
+            // --- 核心升级：如果用户要无损，但目前只给 MP3，尝试全网“提级”寻找！ ---
+            if (level === 'lossless' && !probeResult.mime.includes('flac')) {
+                console.warn(`[Quality-Up] ⏫ 用户请求无损，但原生通道仅下发了 MP3，正在尝试全网提级至 FLAC...`);
+                requiresFallback = true;
+            }
         }
 
-        // 如果我们请求无损，但平台发回来的并不是无损
-        if (!(dlInfo as any).usedFallback && level === 'lossless' && dlInfo.type.toLowerCase() === 'mp3') {
-            console.warn(`[Netease] 警告：请求无损，但返回了 mp3 格式 (由于无 Cookie 权限降级)`);
+        let isFatalAbsence = false;
+
+        if (requiresFallback) {
+            console.warn(`[Netease: Fallback] 正在执行全网搜索 (腾讯/酷狗/B站/i-meto)...`);
+            const netease: any = await import('./netease.js');
+
+            let fallbackUrl = await netease.fetchFallbackFromMetingTencent(detail.title, detail.artist, level);
+            if (!fallbackUrl) {
+                console.warn(`[Netease: Fallback] 腾讯节点未命中，尝试酷狗节点...`);
+                fallbackUrl = await netease.fetchFallbackFromKugou(detail.title, detail.artist);
+            }
+            if (!fallbackUrl) {
+                console.warn(`[Netease: Fallback] 酷狗节点亦失效，尝试 B 站音频库搜索...`);
+                fallbackUrl = await netease.fetchFallbackFromBilibili(detail.title, detail.artist);
+            }
+
+            if (fallbackUrl) {
+                console.log(`[Netease: Fallback] ✔️ 截获平替源链接！执行校验...`);
+                finalHitUrl = fallbackUrl;
+                // 对平替源再次进行兜底探测 (必须保证是完整内容)
+                const fallbackProbe = await probeAudioQuality(finalHitUrl, 'tencent', (detail as any).duration || 0);
+                if (!fallbackProbe.valid) {
+                    console.error(`[Netease: Fallback] ❌ 平替源探针校验失败。`);
+                    isFatalAbsence = true;
+                } else {
+                    probeResult = fallbackProbe;
+                    console.log(`[Netease: Fallback] 探针复核通过: ${probeResult.mime} - ${probeResult.bitrate}kbps`);
+                }
+            } else {
+                console.error(`[Netease: Fallback] ❌ 所有平替方案均未检索到有效资源。`);
+                isFatalAbsence = true;
+            }
+        }
+
+        if (isFatalAbsence) {
+            throw new Error(`[Netease: Purge] 您请求的歌曲已全网封锁！平替方案已耗尽，为避免下载损坏文件，操作已强行终止。`);
         }
 
         let lyricText = await fetchNeteaseLyric(id);
@@ -212,9 +303,11 @@ export async function downloadAndTagNeteaseSong(id: number | string, musicDir: s
             } catch (ignore) { }
         }
 
-        const safeArtist = detail.artist.replace(/[<>:"/\\|?*]+/g, '_').trim() || 'Unknown Artist';
-        const safeTitle = detail.title.replace(/[<>:"/\\|?*]+/g, '_').trim() || 'Unknown Title';
-        const ext = dlInfo.type.toLowerCase() === 'flac' ? '.flac' : '.mp3';
+        const safeArtist = (detail.artist || '').replace(/[<>:"/\\|?*]+/g, '_').trim() || 'Unknown Artist';
+        const safeTitle = (detail.title || '').replace(/[<>:"/\\|?*]+/g, '_').trim() || 'Unknown Title';
+
+        // 动态检测后缀
+        const ext = (probeResult.mime || '').includes('flac') ? '.flac' : '.mp3';
         const filename = `${safeArtist} - ${safeTitle}${ext}`;
 
         const downloadsDir = path.join(musicDir, 'Downloads');
@@ -224,46 +317,8 @@ export async function downloadAndTagNeteaseSong(id: number | string, musicDir: s
 
         const filepath = path.join(downloadsDir, filename);
 
-        // 预检查流状态，彻底阻断落地硬盘冲突！
-        let finalHitUrl = dlInfo.url;
-        let requiresFallback = false;
-
-        console.log(`[Netease] 调用声呐探针嗅探原生/首级代理管线体积...`);
-        try {
-            const probeRes = await axios.get(dlInfo.url, { responseType: 'stream', timeout: 8000 });
-            const pLen = parseInt(probeRes.headers['content-length'] || '0');
-            if (pLen > 0 && pLen < 2000000) { // < 2.0MB 确认为阉割神曲 (30s或60s极高音质VIP碎流)
-                requiresFallback = true;
-            }
-            probeRes.data.destroy(); // 掐断管线，不产生实际落盘流量
-        } catch (e) {
-            // 如果探针失败，我们信任原链接并继续在后端下载，在最终落地时接受防爆门检测
-        }
-
-        let isFatalAbsence = false;
-
-        if (requiresFallback) {
-            console.warn(`[Netease: Fallback] 被原辖区权限（VIP单曲/残次防盗截断）阻击！停止接收本管线残片！进入高级双保险平替重路由！`);
-            let fallbackUrl = await fetchFallbackFromMetingTencent(detail.title, detail.artist);
-            if (!fallbackUrl) {
-                console.warn(`[Netease: Fallback] 腾讯节点阵亡告破，重试酷狗核心...`);
-                fallbackUrl = await fetchFallbackFromKugou(detail.title, detail.artist);
-            }
-            if (fallbackUrl) {
-                console.log(`[Netease: Fallback] ✔️ 截获高保真完全版同宗音轨链接！执行主轴重接...`);
-                finalHitUrl = fallbackUrl;
-            } else {
-                console.warn(`[Netease: Fallback Error] 🚨 全网同名单曲资源荡然无存！本VIP曲库已被彻底封死！已宣判此曲绝迹。`);
-                isFatalAbsence = true;
-            }
-        }
-
-        if (isFatalAbsence) {
-            throw new Error(`全网搜捕瘫痪，绝密VIP/防盗源无可平替。为保持曲库纯净，彻底舍弃试听版残片！`);
-        }
-
-        // 安全一维写入管线：确保系统仅进行一次单向无阻塞写盘，彻底粉碎 EBUSY 悬锁隐患。
-        console.log(`[Netease] 正在向终端磁盘转录音频流本体... -> ${filename}`);
+        // 安全写入管线
+        console.log(`[Netease] 正在向终端磁盘写入音频流: ${filename}`);
         const audioRes = await axios.get(finalHitUrl, { responseType: 'stream', timeout: 30000 });
         const writer = fs.createWriteStream(filepath);
         audioRes.data.pipe(writer);
@@ -273,14 +328,12 @@ export async function downloadAndTagNeteaseSong(id: number | string, musicDir: s
             writer.on('error', reject);
         });
 
-        // 终极把关检查：不管伪装得多好，在最后落地如果小于 2MB （对于普通完整歌极难）或是残留被查！
+        // 终极检测修复：确保落地文件体积不是试听碎流
         const finalStats = fs.statSync(filepath);
-        if (finalStats.size < 2000000) {
-            console.warn(`[Netease: Purge] 高度危险：物理落底文件极小 (${finalStats.size} bytes)，强烈怀疑为残次截断试听版！立即施行物理清洗。`);
+        if (finalStats.size < 1000000) { // 对于平替源，阈值可以稍微低一点点，但 1MB 是底线
+            console.warn(`[Netease: Purge] 高度危险：物理落底文件 (${finalStats.size} bytes) 疑似仍为残片！执行物理清洗。`);
             fs.unlinkSync(filepath);
-            throw new Error(`资源残次/体积奇小（不足2MB）。防毒清理判定已生效，拒绝入库！`);
-        } else {
-            console.log(`[Netease] 音轨全尺寸落地完成(Bytes: ${finalStats.size})，完美提取！`);
+            throw new Error(`资源残次（不足1MB）。防毒清理判定已生效，拒绝入库！`);
         }
 
         // Write Tags by Extension
@@ -292,36 +345,31 @@ export async function downloadAndTagNeteaseSong(id: number | string, musicDir: s
                 if (coverBuffer) {
                     tags.image = { mime: coverMime, type: { id: 3, name: 'front cover' }, description: 'Cover', imageBuffer: coverBuffer };
                 }
-                const success = NodeID3.update(tags, filepath);
-                if (!success) console.error(`[Netease] Failed to write ID3 for ${filepath}`);
+                NodeID3.update(tags, filepath);
             } else if (ext === '.flac') {
                 const Metaflac = require('metaflac-js');
                 const flac = new Metaflac(filepath);
-
                 if (detail.title) { flac.removeTag('TITLE'); flac.setTag(`TITLE=${detail.title}`); }
                 if (detail.artist) { flac.removeTag('ARTIST'); flac.setTag(`ARTIST=${detail.artist}`); }
                 if (detail.album) { flac.removeTag('ALBUM'); flac.setTag(`ALBUM=${detail.album}`); }
                 if (lyricText) { flac.removeTag('LYRICS'); flac.setTag(`LYRICS=${lyricText}`); }
-                if (coverBuffer) {
-                    try { flac.importPictureFromBuffer(coverBuffer); } catch (e) { }
-                }
+                if (coverBuffer) { try { flac.importPictureFromBuffer(coverBuffer); } catch (e) { } }
                 flac.save();
             }
-            console.log(`[Netease] Successfully encoded metadata to: ${filepath}`);
         } catch (e) {
             console.error(`[Netease] Metadata error for ${filepath}`, e);
-            scrapeStatus = 2; // failed but downloaded
+            scrapeStatus = 2;
         }
 
         // Insert into Database
         const existing = db.prepare('SELECT id FROM tracks WHERE filepath = ?').get(filepath);
         if (!existing) {
+            const crypto = require('crypto');
             const trackId = crypto.randomUUID ? crypto.randomUUID() : crypto.randomBytes(16).toString('hex');
             db.prepare(`
                  INSERT INTO tracks (id, filepath, filename, extension, title, artist, album, scrape_status) 
                  VALUES (?, ?, ?, ?, ?, ?, ?, ?)
              `).run(trackId, filepath, filename, ext, detail.title, detail.artist, detail.album, scrapeStatus);
-            console.log(`[Netease] Database track record integrated for ${trackId}`);
         } else {
             db.prepare('UPDATE tracks SET title=?, artist=?, album=?, scrape_status=?, updated_at=CURRENT_TIMESTAMP WHERE id=?')
                 .run(detail.title, detail.artist, detail.album, scrapeStatus, (existing as any).id);

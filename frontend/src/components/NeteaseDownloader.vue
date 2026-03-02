@@ -74,6 +74,7 @@
                 <option value="exhigh">{{ t('downloader.level_exhigh') }}</option>
                 <option value="lossless">{{ t('downloader.level_lossless') }}</option>
                 <option value="hires">{{ t('downloader.level_hires') }}</option>
+                <option value="jymaster">母带 (Master)</option>
               </select>
             </div>
             
@@ -96,14 +97,22 @@
           <div v-if="parsedData" class="flex flex-col gap-4 border border-slate-800 bg-slate-800/20 p-4 rounded-xl">
              <div v-if="parsedData.type === 'song'" class="flex items-center gap-4">
                 <img v-if="parsedData.data[0].coverUrl" :src="parsedData.data[0].coverUrl" class="w-16 h-16 rounded shadow-lg object-cover" />
-                <div class="flex-1 min-w-0">
-                   <h3 class="text-slate-100 font-bold truncate">{{ parsedData.data[0].title }}</h3>
-                   <p class="text-slate-400 text-sm truncate">{{ parsedData.data[0].artist }}</p>
-                </div>
-                <div class="flex flex-col items-end">
-                  <span v-if="parsedData.data[0].downloadable" class="px-2 py-0.5 rounded text-[10px] uppercase font-bold bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">{{ t('downloader.tag_downloadable') }}</span>
-                  <span v-else class="px-2 py-0.5 rounded text-[10px] uppercase font-bold bg-rose-500/10 text-rose-400 border border-rose-500/20">{{ t('downloader.tag_restricted') }}</span>
-                </div>
+                 <div class="flex-1 min-w-0">
+                    <h3 class="text-slate-100 font-bold truncate">{{ parsedData.data[0].title }}</h3>
+                    <p class="text-slate-400 text-sm truncate">{{ parsedData.data[0].artist }}</p>
+                    <!-- Quality Badges -->
+                    <div v-if="parsedData.data[0].quality" class="flex gap-2 mt-2 items-center">
+                       <span v-if="parsedData.data[0].quality.bitrate > 2000 || parsedData.data[0].level === 'jymaster'" class="px-1.5 py-0.5 rounded-[4px] text-[9px] font-black bg-gradient-to-r from-amber-400 to-orange-500 text-black leading-none uppercase">Master</span>
+                       <span v-else-if="parsedData.data[0].quality.mime.includes('flac')" class="px-1.5 py-0.5 rounded-[4px] text-[9px] font-black bg-indigo-500 text-white leading-none">FLAC</span>
+                       <span v-else class="px-1.5 py-0.5 rounded-[4px] text-[9px] font-black bg-slate-700 text-slate-300 leading-none uppercase">{{ parsedData.data[0].quality.mime.split('/')[1] || 'MP3' }}</span>
+                       <span class="text-[10px] text-slate-500 font-mono">{{ parsedData.data[0].quality.bitrate }}kbps</span>
+                       <span class="text-[10px] text-slate-600 ml-1">{{ (parsedData.data[0].quality.size / 1024 / 1024).toFixed(2) }}MB</span>
+                    </div>
+                 </div>
+                 <div class="flex flex-col items-end gap-2">
+                   <span v-if="parsedData.data[0].downloadable" class="px-2 py-0.5 rounded text-[10px] uppercase font-bold bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">{{ t('downloader.tag_downloadable') }}</span>
+                   <span v-else class="px-2 py-0.5 rounded text-[10px] uppercase font-bold bg-rose-500/10 text-rose-400 border border-rose-500/20">{{ t('downloader.tag_restricted') }}</span>
+                 </div>
              </div>
 
              <div v-else-if="parsedData.type === 'playlist'" class="flex items-center gap-4">

@@ -360,11 +360,13 @@ app.get('/api/tracks/:id/stream', (req, res) => {
 
         const stat = fs.statSync(track.filepath);
         const fileSize = stat.size;
-        const range = req.headers.range;
+        const rangeHeader = req.headers.range;
 
-        if (range) {
+        if (rangeHeader && typeof rangeHeader === 'string') {
+            const range = rangeHeader;
             const parts = range.replace(/bytes=/, "").split("-");
-            const start = parseInt(parts[0], 10);
+            const startStr = parts[0] || "0";
+            const start = parseInt(startStr, 10);
             const end = parts[1] ? parseInt(parts[1], 10) : fileSize - 1;
             const chunksize = (end - start) + 1;
             const file = fs.createReadStream(track.filepath, { start, end });
@@ -534,12 +536,55 @@ app.post('/api/netease/parse', async (req, res) => {
 
             const dl = await fetchNeteaseDownloadUrl(parsed.id, level, cookie);
 
+            let quality = null;
+            if (dl && dl.url) {
+                const { probeAudioQuality } = await import('./utils/probe.js');
+                quality = await probeAudioQuality(dl.url, 'netease', (detail as any).duration || 0);
+            }
+
+            // --- 核心升级：如果原生通道 (含 Meting 默认代理) 均为失效源，尝试全网搜索平替以确认是否“可下载” ---
+            let downloadable = !!(dl && dl.url && quality?.valid);
+
+            if (!downloadable) {
+                console.warn(`[Netease: Parse-Fallback] 原生源失效，正在尝试验证跨平台平替源是否可用...`);
+                // 这里我们调用后端的 fallback 探测逻辑，不下载，仅验证 URL
+                const netease: any = await import('./netease.js');
+
+                console.log(`[Fallback: Sync] 🔍 正在检索腾讯节点...`);
+                let fallbackUrl = await netease.fetchFallbackFromMetingTencent(detail.title, detail.artist, level);
+
+                if (!fallbackUrl) {
+                    console.log(`[Fallback: Sync] 🔍 正在检索酷狗节点...`);
+                    fallbackUrl = await netease.fetchFallbackFromKugou(detail.title, detail.artist);
+                }
+
+                if (!fallbackUrl) {
+                    console.log(`[Fallback: Sync] 🔍 正在检索 B 站节点...`);
+                    fallbackUrl = await netease.fetchFallbackFromBilibili(detail.title, detail.artist);
+                }
+
+                if (fallbackUrl) {
+                    const { probeAudioQuality } = await import('./utils/probe.js');
+                    const fallbackQuality = await probeAudioQuality(fallbackUrl, 'tencent', (detail as any).duration || 0);
+                    if (fallbackQuality.valid) {
+                        downloadable = true;
+                        quality = fallbackQuality;
+                        console.log(`[Netease: Parse-Fallback] ✔️ 探测到有效的全网平替源，修正为“可下载”状态。`);
+                    } else {
+                        console.warn(`[Netease: Parse-Fallback] ❌ 搜到的平替源 (${fallbackQuality.mime}) 探针校验失败。`);
+                    }
+                } else {
+                    console.warn(`[Netease: Parse-Fallback] ❌ 全网平替（含 B 站）方案已耗尽。`);
+                }
+            }
+
             res.json({
                 success: true,
                 type: 'song',
                 data: [{
                     ...detail,
-                    downloadable: !!(dl && dl.url),
+                    downloadable,
+                    quality,
                     neteaseId: parsed.id
                 }]
             });
@@ -586,6 +631,25 @@ app.post('/api/qq/parse', async (req, res) => {
         if (!url) return res.status(400).json({ success: false, error: 'No URL provided' });
 
         const parsed = await parseQQMusicUrl(url, level, cookie);
+
+        if (parsed.type === 'song' && parsed.data && parsed.data.length > 0) {
+            const song = parsed.data[0];
+            if (song) {
+                const { fetchQQMusicDownloadUrl } = await import('./qqmusic.js');
+                const dl = await fetchQQMusicDownloadUrl(song.qqId, level, cookie);
+
+                let quality = null;
+                if (dl && dl.url) {
+                    const { probeAudioQuality } = await import('./utils/probe.js');
+                    quality = await probeAudioQuality(dl.url, 'qq', (song as any).duration || 0);
+                }
+                if (song) {
+                    song.downloadable = !!(dl && dl.url && quality?.valid);
+                    (song as any).quality = quality;
+                }
+            }
+        }
+
         res.json({ success: true, ...parsed });
     } catch (e: any) {
         console.error('[QQMusic Parse Error]', e);
@@ -603,6 +667,31 @@ app.post('/api/qq/download', async (req, res) => {
     } catch (e: any) {
         console.error('[QQMusic Download Error]', e);
         res.status(500).json({ success: false, error: e.message || 'Unknown Server Error' });
+    }
+});
+
+// SETTINGS & CONFIG
+app.get('/api/settings/config', (req, res) => {
+    try {
+        const configPath = path.join(dataDir, 'settings.json');
+        let config = {};
+        if (fs.existsSync(configPath)) {
+            config = JSON.parse(fs.readFileSync(configPath, 'utf8'));
+        }
+        res.json({ success: true, data: config });
+    } catch (e: any) {
+        res.status(500).json({ success: false, error: e.message });
+    }
+});
+
+app.post('/api/settings/config', (req, res) => {
+    try {
+        const config = req.body;
+        const configPath = path.join(dataDir, 'settings.json');
+        fs.writeFileSync(configPath, JSON.stringify(config, null, 2), 'utf8');
+        res.json({ success: true });
+    } catch (e: any) {
+        res.status(500).json({ success: false, error: e.message });
     }
 });
 

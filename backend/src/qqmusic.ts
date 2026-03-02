@@ -3,6 +3,7 @@ import path from 'path';
 import fs from 'fs';
 import NodeID3 from 'node-id3';
 const Metaflac = require('metaflac-js');
+import crypto from 'crypto';
 import { db } from './db';
 
 // Extract Tencent ID from link
@@ -65,6 +66,7 @@ export async function parseQQMusicUrl(url: string, level: string = 'exhigh', coo
                     qqId: id, // unified id
                     title: song.name,
                     artist: (Array.isArray(song.artist) ? song.artist.join(', ') : song.artist) || 'Unknown',
+                    duration: song.time || 0, // Meting often uses 'time' for duration
                     downloadable: !!song.url
                 }]
             };
@@ -77,15 +79,17 @@ export async function parseQQMusicUrl(url: string, level: string = 'exhigh', coo
 }
 
 export async function fetchQQMusicDownloadUrl(id: string | number, level: string = 'exhigh', cookie?: string) {
-    // QQ音乐直接走 Meting 音频中继流代理池！不需要自己请求它然后拿 JSON，因为 Meting 的 type=url 会自动重定向给真实流。
-    const proxyUrl = `https://api.injahow.cn/meting/?server=tencent&type=url&id=${id}`;
+    // QQ 音乐尝试中继代理，部分节点支持通过 br 参数调节
+    let br = '320';
+    if (level === 'lossless' || level === 'hires') br = 'flac';
+    if (level === 'standard') br = '128';
 
-    // 如果想要确保这个代理能够找到链接而不直接返回 404 或小文件，在这里可以选做一个极其初步的探测跳跃确认。
-    // 但是直接下发并在主函数的 probe 处检测是最干脆的：
+    const proxyUrl = `https://api.injahow.cn/meting/?server=tencent&type=url&id=${id}${br !== '320' ? '&br=' + br : ''}`;
+
     return {
         url: proxyUrl,
-        type: 'mp3', // Meting 返回可能是 128k Mp3
-        usedFallback: false // 因为全程是正常的调用，并非备用
+        type: br === 'flac' ? 'flac' : 'mp3',
+        usedFallback: false
     };
 }
 
@@ -106,6 +110,8 @@ export async function fetchQQMusicLyric(id: string | number) {
     }
 }
 
+import { probeAudioQuality } from './utils/probe';
+
 export async function downloadAndTagQQMusicSong(musicDir: string, id: string | number, level: string = 'exhigh', cookie?: string): Promise<string> {
     try {
         const detail = await fetchQQMusicDetail(id);
@@ -115,6 +121,14 @@ export async function downloadAndTagQQMusicSong(musicDir: string, id: string | n
 
         if (!dlInfo || !dlInfo.url) {
             throw new Error(`已将 ${detail.name} 拦截！QQ代理节点无权抽取该源。`);
+        }
+
+        // --- 集成质量探测 (Sonar Probing) ---
+        const probeResult = await probeAudioQuality(dlInfo.url, 'qq', 0);
+
+        if (!probeResult.valid) {
+            console.warn(`[QQMusic] 探针检测到体积异常 (${probeResult.size} bytes)，QQ 代理节点下发了残次源。`);
+            throw new Error('截获体积过小的腾讯侧残次防盗源，拒绝入库。');
         }
 
         let lyricText = await fetchQQMusicLyric(id);
@@ -131,7 +145,13 @@ export async function downloadAndTagQQMusicSong(musicDir: string, id: string | n
 
         const safeArtist = (Array.isArray(detail.artist) ? detail.artist.join(',') : detail.artist).replace(/[<>:"/\\|?*]+/g, '_').trim() || 'Unknown Artist';
         const safeTitle = detail.name.replace(/[<>:"/\\|?*]+/g, '_').trim() || 'Unknown Title';
-        const ext = dlInfo.type.toLowerCase() === 'flac' ? '.flac' : '.mp3';
+
+        // 解析真实扩展名
+        let ext = '.mp3';
+        if (probeResult.mime.includes('flac') || dlInfo.type?.toLowerCase() === 'flac') {
+            ext = '.flac';
+        }
+
         const filename = `${safeArtist} - ${safeTitle}${ext}`;
 
         const downloadsDir = path.join(musicDir, 'Downloads');
@@ -141,22 +161,8 @@ export async function downloadAndTagQQMusicSong(musicDir: string, id: string | n
 
         const filepath = path.join(downloadsDir, filename);
 
-        let finalHitUrl = dlInfo.url;
-
-        console.log(`[QQMusic] 探测腾讯直链音频尺寸...`);
-        try {
-            const probeRes = await axios.get(dlInfo.url, { responseType: 'stream', timeout: 8000 });
-            const pLen = parseInt(probeRes.headers['content-length'] || '0');
-            if (pLen > 0 && pLen < 2000000) {
-                throw new Error('截获体积过小的腾讯侧残次防盗源，拒绝入库。');
-            }
-            probeRes.data.destroy();
-        } catch (e: any) {
-            if (e.message && e.message.includes('体积过小')) throw e;
-        }
-
-        console.log(`[QQMusic] 开始向磁盘转录音频流本体... -> ${filename}`);
-        const audioRes = await axios.get(finalHitUrl, { responseType: 'stream', timeout: 30000 });
+        console.log(`[QQMusic] 开始向磁盘转录音频流本体... -> ${filename} (Size: ${probeResult.size})`);
+        const audioRes = await axios.get(dlInfo.url, { responseType: 'stream', timeout: 30000 });
         const writer = fs.createWriteStream(filepath);
         audioRes.data.pipe(writer);
 

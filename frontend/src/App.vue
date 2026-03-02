@@ -65,7 +65,8 @@
                         <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2v20"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>
                         {{ $t('downloader.title') }}
                     </button>
-                    <button disabled class="w-full text-left px-3 py-2 text-sm text-slate-500 cursor-not-allowed rounded">
+                    <button @click="isSettingsOpen = true" class="w-full text-left px-3 py-2 text-sm text-slate-300 hover:bg-slate-700 rounded flex items-center gap-2 transition">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.1a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/><circle cx="12" cy="12" r="3"/></svg>
                         {{ $t('settings_btn') }}
                     </button>
                 </div>
@@ -124,6 +125,7 @@
     />
     <TrackDetail :is-open="isDrawerOpen" :track="selectedTrack" @close="closeEditDrawer" @saved="onTrackSaved" />
     <NeteaseDownloader :is-open="isNeteaseOpen" @close="isNeteaseOpen = false" @downloaded="onTrackSaved" />
+    <SettingsModal :is-open="isSettingsOpen" @close="isSettingsOpen = false" />
   </div>
 </template>
 
@@ -134,6 +136,7 @@ import { useI18n } from 'vue-i18n';
 import TrackList from './components/TrackList.vue';
 import TrackDetail from './components/TrackDetail.vue';
 import NeteaseDownloader from './components/NeteaseDownloader.vue';
+import SettingsModal from './components/SettingsModal.vue';
 import MusicPlayer from './components/MusicPlayer.vue';
 import { toastMsg, useToast } from './composables/useToast';
 import { watch } from 'vue';
@@ -237,6 +240,7 @@ const playAt = (index: number) => {
 
 // Netease Drawer State
 const isNeteaseOpen = ref(false);
+const isSettingsOpen = ref(false);
 
 const openEditDrawer = (track: any) => {
     selectedTrack.value = track;
