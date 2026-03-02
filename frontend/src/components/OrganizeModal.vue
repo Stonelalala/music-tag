@@ -1,53 +1,53 @@
 <template>
-  <div v-if="isOpen" class="fixed inset-0 z-50 flex items-center justify-center">
+  <div v-if="isOpen" class="fixed inset-0 z-[100] flex items-center justify-center">
     <div class="absolute inset-0 bg-slate-900/70 backdrop-blur-sm" @click="close"></div>
     <div class="relative w-full max-w-lg bg-slate-800 rounded-lg shadow-2xl shadow-black border border-slate-700 flex flex-col">
       <!-- Header -->
       <div class="p-5 border-b border-slate-700 flex justify-between items-center">
-        <h3 class="text-lg font-semibold text-slate-100">整理文件</h3>
+        <h3 class="text-lg font-semibold text-slate-100">{{ t('ui.organize.title') }}</h3>
         <button @click="close" class="text-slate-400 hover:text-white text-xl">✕</button>
       </div>
       
       <!-- Body -->
       <div class="p-6 space-y-6 max-h-[70vh] overflow-y-auto">
-        <div class="bg-blue-900/20 border border-blue-500/30 rounded p-4 text-sm text-blue-200">
-          整理文件夹，按一级目录，二级目录选定的信息分类。支持根据艺术家、专辑自动将您的音乐文件分类到嵌套文件夹中。
+        <div class="bg-indigo-50 border border-slate-700/30 rounded p-4 text-sm text-slate-400 shadow-inner">
+          {{ t('ui.organize.desc') }}
         </div>
         
         <!-- Base Dir -->
         <div>
-          <label class="block text-sm text-slate-300 mb-2">整理后的根目录</label>
+          <label class="block text-sm text-slate-300 mb-2">{{ t('ui.organize.base_dir_lbl') }}</label>
           <input type="text" v-model="baseDir" class="w-full bg-slate-900 border border-slate-600 rounded px-3 py-2 text-sm text-slate-200 focus:border-indigo-500 focus:outline-none" />
-          <p class="text-xs text-slate-500 mt-1">目前默认在后端设定的媒体总目录基础上整理</p>
+          <p class="text-xs text-slate-500 mt-1">{{ t('ui.organize.base_dir_hint') }}</p>
         </div>
         
         <!-- Levels -->
         <div>
-          <label class="block text-sm text-slate-300 mb-2">目录层级设置</label>
+          <label class="block text-sm text-slate-300 mb-2">{{ t('ui.organize.level_lbl') }}</label>
           
           <transition-group name="list" tag="div">
             <div v-for="(level, index) in levels" :key="level.id" class="border border-slate-700 rounded p-4 mb-3 bg-slate-900/50 shadow-inner">
               <div class="flex justify-between items-center mb-2">
-                <span class="text-xs font-semibold text-slate-400">第 {{ index + 1 }} 层目录</span>
-                <button @click="removeLevel(index)" class="text-red-400 hover:text-red-300 text-lg leading-none p-1">×</button>
+                <span class="text-xs font-semibold text-slate-400">{{ t('ui.organize.level_name', { index: index + 1 }) }}</span>
+                <button @click="removeLevel(index)" class="text-red-400 hover:text-red-300 text-lg leading-none p-1">{{ t('ui.organize.remove_btn') }}</button>
               </div>
               
               <select v-model="level.field" class="w-full bg-slate-800 border border-slate-600 rounded px-3 py-2 text-sm text-slate-200 focus:outline-none focus:border-indigo-500 mb-2">
-                <option value="">请选择</option>
-                <option value="artist">艺术家</option>
-                <option value="album">专辑</option>
-                <option value="title">标题</option>
-                <option value="custom">自定义 (Custom)</option>
+                <option value="">{{ t('ui.organize.select_hint') }}</option>
+                <option value="artist">{{ t('ui.organize.artist') }}</option>
+                <option value="album">{{ t('ui.organize.album') }}</option>
+                <option value="title">{{ t('ui.organize.track_title') }}</option>
+                <option value="custom">{{ t('ui.organize.custom') }}</option>
               </select>
               
               <div v-if="level.field === 'custom'">
-                 <input v-model="level.customValue" type="text" placeholder="在此输入自定义名称..." class="w-full bg-slate-800 border border-slate-600 rounded px-3 py-2 text-sm text-slate-200 focus:outline-none focus:border-indigo-500" />
+                 <input v-model="level.customValue" type="text" :placeholder="t('ui.organize.custom_placeholder')" class="w-full bg-slate-800 border border-slate-600 rounded px-3 py-2 text-sm text-slate-200 focus:outline-none focus:border-indigo-500" />
               </div>
             </div>
           </transition-group>
           
           <button @click="addLevel" class="w-full py-2.5 border border-dashed border-slate-600 rounded text-slate-400 hover:text-slate-200 hover:border-slate-500 transition text-sm flex items-center justify-center gap-2 bg-slate-800/50 hover:bg-slate-800 mt-1">
-            <span class="text-lg leading-none">+</span> 添加目录层级
+            <span class="text-lg leading-none">+</span> {{ t('ui.organize.add_level') }}
           </button>
         </div>
       </div>
@@ -55,10 +55,10 @@
       <!-- Footer -->
       <div class="p-4 border-t border-slate-700 bg-slate-800/80 flex justify-end gap-3 rounded-b-lg">
         <button @click="close" class="px-5 py-2 rounded bg-slate-700 hover:bg-slate-600 text-white transition text-sm font-medium">
-          取消
+          {{ t('ui.organize.cancel_btn') }}
         </button>
         <button @click="confirm" :disabled="processing" class="px-5 py-2 rounded bg-indigo-600 hover:bg-indigo-500 text-white transition text-sm font-medium disabled:opacity-50">
-          {{ processing ? '处理中...' : '确认整理' }}
+          {{ processing ? t('ui.organize.processing') : t('ui.organize.confirm_btn') }}
         </button>
       </div>
     </div>
@@ -67,9 +67,11 @@
 
 <script setup lang="ts">
 import { ref } from 'vue';
+import { useI18n } from 'vue-i18n';
 import axios from 'axios';
 import { useToast } from '../composables/useToast';
 
+const { t } = useI18n();
 const { showToast } = useToast();
 
 const props = defineProps({
@@ -100,7 +102,7 @@ const removeLevel = (index: number) => {
 const confirm = async () => {
     const validLevels = levels.value.filter(l => l.field && (l.field !== 'custom' || l.customValue.trim() !== ''));
     if (validLevels.length === 0) {
-        showToast("请输入至少一个有效的目录层级");
+        showToast(t('ui.organize.valid_error'));
         return;
     }
     
@@ -114,12 +116,12 @@ const confirm = async () => {
             baseDir: baseDir.value
         });
         if (res.data.success) {
-            showToast(`成功为您移动并整理了 ${res.data.count} 个音频文件！`);
+            showToast(t('ui.organize.success_msg', { count: res.data.count }));
             emit('organized');
             close();
         }
     } catch (e: any) {
-        showToast('文件整理失败: ' + (e.response?.data?.error || e.message));
+        showToast(t('ui.organize.fail_msg', { error: (e.response?.data?.error || e.message) }));
     } finally {
         processing.value = false;
     }

@@ -1,5 +1,5 @@
 <template>
-  <div v-if="isOpen" class="fixed inset-0 z-50 flex items-center justify-center p-4 md:p-8">
+  <div v-if="isOpen" class="fixed inset-0 z-[100] flex items-center justify-center p-4 md:p-8">
     <!-- Backdrop -->
     <div class="absolute inset-0 bg-slate-900/60 backdrop-blur-sm" @click="close"></div>
     
@@ -55,8 +55,8 @@
             
             <div>
               <label class="block text-xs text-slate-400 mb-1 flex justify-between">
-                  <span>Lyrics (同步歌词)</span>
-                  <button @click="autoFetchLyrics" v-if="form.title && form.artist" class="text-[10px] text-indigo-400 hover:text-indigo-300 underline">外网补全歌词</button>
+                  <span>{{ $t('lbl_lyrics') }}</span>
+                  <button @click="autoFetchLyrics" v-if="form.title && form.artist" class="text-[10px] text-indigo-400 hover:text-indigo-300 underline">{{ $t('ui.edit.fetch_lyrics_btn') }}</button>
               </label>
               <textarea v-model="form.lyrics" rows="6" class="w-full bg-slate-900 border border-slate-700 rounded px-3 py-2 text-xs focus:outline-none focus:border-indigo-500 font-mono"></textarea>
             </div>
@@ -82,10 +82,10 @@
           
           <!-- Search Header -->
           <div class="p-6 border-b border-slate-700/80 flex flex-col gap-4">
-              <h3 class="text-base font-medium text-slate-200">在线元数据刮削检索 (Metadata Search)</h3>
+              <h3 class="text-base font-medium text-slate-200">{{ $t('ui.edit.search_title') }}</h3>
               
               <div class="flex items-center gap-3 w-full max-w-2xl">
-                  <label class="text-sm text-slate-400 whitespace-nowrap">标签源:</label>
+                  <label class="text-sm text-slate-400 whitespace-nowrap">{{ $t('ui.edit.search_label') }}</label>
                   <select v-model="searchSource" class="bg-slate-800 border border-slate-600 rounded px-3 py-2 text-sm text-slate-200 focus:border-indigo-500 focus:outline-none">
                       <option value="qq">QQ音乐</option>
                       <option value="netease">网易云音乐</option>
@@ -93,12 +93,12 @@
                   </select>
                   
                   <div class="flex-1 relative">
-                      <input v-model="searchQuery" @keyup.enter="doSearch" type="text" class="w-full bg-slate-800 border border-slate-600 rounded px-3 py-2 text-sm text-slate-200 focus:border-indigo-500 focus:outline-none" placeholder="输入关键字，如: 爱跳舞的小怪兽..." />
+                      <input v-model="searchQuery" @keyup.enter="doSearch" type="text" class="w-full bg-slate-800 border border-slate-600 rounded px-3 py-2 text-sm text-slate-200 focus:border-indigo-500 focus:outline-none" :placeholder="$t('ui.edit.search_placeholder')" />
                   </div>
                   
                   <button @click="doSearch" :disabled="isSearching" class="bg-indigo-600 hover:bg-indigo-500 text-white px-5 py-2 rounded text-sm transition font-medium flex gap-2 items-center disabled:opacity-50">
                      <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
-                     检索
+                     {{ $t('ui.edit.search_btn') }}
                   </button>
               </div>
           </div>
@@ -107,14 +107,14 @@
           <div class="flex-1 overflow-y-auto p-2 sm:p-4">
              <div v-if="isSearching" class="flex justify-center items-center h-40 text-slate-500 gap-3">
                  <svg class="animate-spin h-5 w-5 text-indigo-500" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>
-                 <span>正在跨国检索元数据库...</span>
+                 <span>{{ $t('ui.edit.searching') }}</span>
              </div>
              <table v-else-if="searchResults.length > 0" class="w-full text-left text-sm text-slate-300">
                  <thead class="text-xs text-slate-500 uppercase border-b border-slate-700/50">
                      <tr>
-                         <th class="py-3 px-4 font-normal">封面 / 标题 / 艺术家</th>
-                         <th class="py-3 px-4 font-normal">专辑</th>
-                         <th class="py-3 px-4 font-normal text-center w-28">操作</th>
+                         <th class="py-3 px-4 font-normal">{{ $t('ui.edit.col_cover_title') }}</th>
+                         <th class="py-3 px-4 font-normal">{{ $t('ui.edit.col_album') }}</th>
+                         <th class="py-3 px-4 font-normal text-center w-28">{{ $t('ui.edit.col_actions') }}</th>
                      </tr>
                  </thead>
                  <tbody>
@@ -140,7 +140,7 @@
                          </td>
                          <td class="py-3 px-4 text-center">
                              <button @click="applyMetadata(res)" class="px-4 py-1.5 bg-emerald-600/10 text-emerald-400 hover:bg-emerald-600 hover:text-white rounded border border-emerald-600/30 text-xs transition font-medium opacity-80 group-hover:opacity-100 shadow">
-                                 应用刮削
+                                 {{ $t('ui.edit.apply_btn') }}
                              </button>
                          </td>
                      </tr>
@@ -241,12 +241,12 @@ const applyMetadata = (resData: any) => {
     form.value.artist = resData.artist || '';
     form.value.album = resData.album || '';
     // Optional: we don't automatically override manual lyrics here, but we could add a warning or confirm.
-    showToast('信息已填充！请检查并点击下方"保存信息"进行物理写入。');
+    showToast(t('ui.edit.apply_success'));
 };
 
 const autoFetchLyrics = async () => {
     // This could just auto fetch lyrics from LRCLIB using current title/artist
-    showToast('此功能即将实现 (Background Engine integration pending)');
+    showToast(t('ui.edit.upcoming_feature'));
 };
 
 const onFileChange = async (event: Event) => {
