@@ -5,6 +5,17 @@ const token = ref(localStorage.getItem('AUTH_TOKEN'));
 const user = ref<any>(JSON.parse(localStorage.getItem('AUTH_USER') || 'null'));
 const isAuthenticated = ref(!!token.value);
 
+const setupAxios = () => {
+    if (token.value) {
+        axios.defaults.headers.common['Authorization'] = `Bearer ${token.value}`;
+    } else {
+        delete axios.defaults.headers.common['Authorization'];
+    }
+};
+
+// Initialize axios with token from localStorage
+setupAxios();
+
 export function useAuth() {
     const login = async (username: string, password: string): Promise<{ success: boolean; error?: string }> => {
         try {
@@ -32,13 +43,6 @@ export function useAuth() {
         localStorage.removeItem('AUTH_USER');
     };
 
-    const setupAxios = () => {
-        if (token.value) {
-            axios.defaults.headers.common['Authorization'] = `Bearer ${token.value}`;
-        } else {
-            delete axios.defaults.headers.common['Authorization'];
-        }
-    };
 
     // Global interceptor to handle 401
     axios.interceptors.response.use(
@@ -56,7 +60,6 @@ export function useAuth() {
         user,
         isAuthenticated,
         login,
-        logout,
-        setupAxios
+        logout
     };
 }

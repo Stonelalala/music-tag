@@ -74,7 +74,7 @@
       <div class="flex items-center gap-2">
         <!-- Mobile Menu Trigger -->
         <button 
-          @click="trackListRef?.openSidebar()" 
+          @click="isSidebarOpen = true" 
           class="md:hidden w-10 h-10 rounded-xl bg-app-accent/10 text-app-accent flex items-center justify-center shrink-0 active:scale-90 transition-transform"
         >
             <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
@@ -117,6 +117,7 @@
                 </div>
                 <div class="p-2 flex flex-col gap-1">
                     <button @click="triggerScan" class="w-full text-left px-3 py-2 text-sm hover:bg-app-muted rounded flex items-center gap-2 transition text-app-primary">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16"/><path d="M3 21v-5h5"/><path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/></svg>
                         {{ t('scan_btn') }}
                     </button>
                     <button @click="triggerScrape" :disabled="!!status && status.dbStatus.pending === 0" class="w-full text-left px-3 py-2 text-sm text-emerald-400 hover:bg-emerald-500/10 rounded flex items-center gap-2 disabled:opacity-40 transition">
@@ -157,31 +158,133 @@
         </div>
       </div>
     </header>
-
-    <!-- Main Content Area (Flexible, No Internal Page Scroll) -->
-    <main class="flex-1 overflow-hidden relative">
-        <div class="h-full w-full p-2 md:p-3 max-w-full mx-auto flex flex-col">
-            <template v-if="status">
-                <TrackList 
-                    ref="trackListRef" 
-                    :status="status"
-                    @edit="openEditDrawer" 
-                    @play="(track, list) => playTrack(track, list)"
-                    @refresh="triggerScan"
-                />
-            </template>
-            <div v-else class="text-center py-20 text-slate-500 flex flex-col items-center justify-center flex-1">
-                <div class="animate-pulse flex flex-col items-center gap-4">
-                   <div class="w-12 h-12 rounded-full border-4 border-slate-700 border-t-indigo-500 animate-spin"></div>
-                   {{ t('connecting') }}
-                </div>
+    
+    <div class="flex flex-1 overflow-hidden relative">
+      <!-- Global Sidebar (Moved from TrackList) -->
+      <aside 
+        class="fixed inset-y-0 left-0 w-64 bg-app-sidebar border-r border-app transform transition-transform duration-300 ease-in-out z-[100] md:relative md:translate-x-0 flex flex-col shrink-0"
+        :class="isSidebarOpen ? 'translate-x-0' : '-translate-x-full'"
+      >
+        <!-- Logo / Brand Section -->
+        <div class="px-6 py-8 flex items-center justify-between border-b border-app mb-4">
+          <div class="flex items-center gap-3">
+            <div class="w-8 h-8 rounded bg-emerald-500/20 text-emerald-400 flex items-center justify-center">
+              <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></svg>
             </div>
+            <h1 class="text-lg font-black text-app-primary">{{ t('title').substring(0, 4) }}</h1>
+          </div>
+          <!-- Mobile Close Button -->
+          <button @click="isSidebarOpen = false" class="md:hidden p-2 text-app-muted hover:text-white transition-colors">
+            <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+          </button>
         </div>
-        <!-- Toast messages -->
-        <div v-if="toastMsg" class="fixed top-6 left-1/2 -translate-x-1/2 bg-slate-800 text-cyan-400 text-sm px-5 py-3 rounded-full border border-slate-600 shadow-2xl z-[9999] animate-bounce whitespace-nowrap">
-            {{ toastMsg }}
+
+        <div class="flex-1 overflow-y-auto overflow-x-hidden p-4 space-y-8 scrollbar-hide">
+          <!-- Main Navigation -->
+          <div>
+            <h3 class="px-4 text-[10px] font-black text-app-muted uppercase tracking-widest mb-4">Navigation</h3>
+            <ul class="space-y-1">
+              <li>
+                <button 
+                  @click="switchToTab('library')" 
+                  class="w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all group lg:hover:bg-app-accent/10"
+                  :class="currentTab === 'library' ? 'bg-app-accent text-white shadow-lg shadow-app-accent/20' : 'text-app-secondary'"
+                >
+                  <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><rect width="7" height="7" x="3" y="3" rx="1"/><rect width="7" height="7" x="14" y="3" rx="1"/><rect width="7" height="7" x="14" y="14" rx="1"/><rect width="7" height="7" x="3" y="14" rx="1"/></svg>
+                  <span class="text-sm font-bold">{{ t('tab_tracks') }}</span>
+                </button>
+              </li>
+              <li>
+                <button 
+                  @click="switchToTab('discovery')" 
+                  class="w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all group lg:hover:bg-rose-500/10"
+                  :class="currentTab === 'discovery' ? 'bg-rose-600 text-white shadow-lg shadow-rose-500/20' : 'text-app-secondary'"
+                >
+                  <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="12" cy="12" r="10"/><path d="m16 8-8 8"/><path d="M12 16H8v-4"/></svg>
+                  <span class="text-sm font-bold">{{ t('tab_discovery') }}</span>
+                </button>
+              </li>
+            </ul>
+          </div>
+
+          <!-- Dynamic Folders Section (Only shown for library) -->
+          <div v-if="currentTab === 'library'">
+            <div class="flex items-center justify-between px-4 mb-4">
+              <h3 class="text-[10px] font-black text-app-muted uppercase tracking-widest">{{ t('ui.sidebar.folders') }}</h3>
+              <button v-if="currentFolder" @click="goUp" class="text-[10px] font-bold text-app-accent hover:underline">
+                {{ t('ui.sidebar.back') }}
+              </button>
+            </div>
+            
+            <ul class="space-y-0.5">
+              <li v-for="folder in folders" :key="'global_f_'+folder">
+                <button 
+                  @click="enterFolder(folder)"
+                  class="w-full text-left px-4 py-2.5 rounded-xl flex items-center gap-3 transition-colors text-app-muted hover:bg-app-accent/10 hover:text-app-primary group"
+                >
+                  <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" class="opacity-40 group-hover:opacity-100 transition-opacity"><path d="M4 20h16a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.93a2 2 0 0 1-1.66-.9l-.82-1.2A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13c0 1.1.9 2 2 2Z"/></svg>
+                  <span class="text-[13px] font-medium truncate">{{ folder }}</span>
+                </button>
+              </li>
+              <li v-if="folders.length === 0 && !currentFolder" class="px-4 py-6 text-center text-xs text-app-muted italic border-2 border-dashed border-app rounded-2xl">
+                 {{ t('ui.sidebar.empty') }}
+              </li>
+            </ul>
+          </div>
         </div>
-    </main>
+
+        <!-- Footer Actions in Sidebar -->
+        <div class="p-4 border-t border-app space-y-2">
+            <button @click="isSettingsOpen = true" class="w-full flex items-center gap-3 px-4 py-2.5 rounded-xl text-app-secondary hover:bg-app-muted transition-colors">
+              <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/><circle cx="12" cy="12" r="3"/></svg>
+              <span class="text-xs font-bold">{{ t('settings_btn') }}</span>
+            </button>
+            <button @click="logout" class="w-full flex items-center gap-3 px-4 py-2.5 rounded-xl text-rose-500 hover:bg-rose-500/10 transition-colors">
+              <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
+              <span class="text-xs font-bold">{{ t('logout_btn') }}</span>
+            </button>
+        </div>
+      </aside>
+
+      <!-- Mobile Overlay Backdrop -->
+      <transition enter-active-class="transition-opacity duration-300" enter-from-class="opacity-0" enter-to-class="opacity-100" leave-active-class="transition-opacity duration-200" leave-from-class="opacity-100" leave-to-class="opacity-0">
+        <div v-if="isSidebarOpen" @click="isSidebarOpen = false" class="fixed inset-0 bg-black/60 backdrop-blur-sm z-[90] md:hidden"></div>
+      </transition>
+
+      <!-- Main Content Area -->
+      <main class="flex-1 overflow-hidden relative">
+          <div class="h-full w-full p-2 md:p-4 max-w-full mx-auto flex flex-col overflow-auto custom-scrollbar">
+              <template v-if="status">
+                  <template v-if="currentTab === 'library'">
+                      <TrackList 
+                          :status="status"
+                          :tracks="tracks"
+                          :folders="folders"
+                          :current-folder="currentFolder"
+                          @edit="openEditDrawer" 
+                          @play="(track, list) => playTrack(track, list)"
+                          @refresh="triggerScan"
+                          @enter-folder="enterFolder"
+                          @fetch-tracks="fetchTracks"
+                      />
+                  </template>
+                  <template v-else-if="currentTab === 'discovery'">
+                      <DiscoveryView />
+                  </template>
+              </template>
+              <div v-else class="text-center py-20 text-slate-500 flex flex-col items-center justify-center flex-1">
+                  <div class="animate-pulse flex flex-col items-center gap-4">
+                     <div class="w-12 h-12 rounded-full border-4 border-slate-700 border-t-emerald-500 animate-spin"></div>
+                     {{ t('connecting') }}
+                  </div>
+              </div>
+          </div>
+          <!-- Toast messages -->
+          <div v-if="toastMsg" class="fixed top-6 left-1/2 -translate-x-1/2 bg-slate-800 text-cyan-400 text-sm px-5 py-3 rounded-full border border-slate-600 shadow-2xl z-[9999] animate-bounce whitespace-nowrap">
+              {{ toastMsg }}
+          </div>
+      </main>
+    </div>
 
     <!-- Global Components -->
     <MusicPlayer 
@@ -209,13 +312,14 @@ import TrackDetail from './components/TrackDetail.vue';
 import NeteaseDownloader from './components/NeteaseDownloader.vue';
 import SettingsModal from './components/SettingsModal.vue';
 import MusicPlayer from './components/MusicPlayer.vue';
+import DiscoveryView from './components/DiscoveryView.vue';
 import { toastMsg, useToast } from './composables/useToast';
 import { useAuth } from './composables/useAuth';
 import { watch, reactive } from 'vue';
 
 const { t, locale } = useI18n({ useScope: 'global' });
 const { showToast: globalShowToast } = useToast();
-const { isAuthenticated, login, logout, setupAxios, token } = useAuth();
+const { isAuthenticated, login, logout, token } = useAuth();
 
 // Login State
 const loginForm = reactive({ username: '', password: '' });
@@ -233,6 +337,45 @@ const handleLogin = async () => {
     } else {
         loginError.value = result.error || 'Unknown error';
     }
+};
+
+// App Tabbing
+const currentTab = ref('library'); // 'library' | 'discovery'
+const isSidebarOpen = ref(false);
+
+const tracks = ref<any[]>([]);
+const folders = ref<string[]>([]);
+const currentFolder = ref('');
+
+const fetchTracks = async (folderPath = '') => {
+  try {
+    const res = await axios.get(`/api/tracks?folder=${encodeURIComponent(folderPath)}`);
+    if (res.data.success) {
+      tracks.value = res.data.data.tracks;
+      folders.value = res.data.data.folders;
+      currentFolder.value = folderPath;
+    }
+  } catch (e) {
+    console.error(e);
+  }
+};
+
+const enterFolder = (f: string) => {
+    const newPath = currentFolder.value ? `${currentFolder.value}/${f}` : f;
+    fetchTracks(newPath);
+    if (window.innerWidth < 768) isSidebarOpen.value = false;
+};
+
+const goUp = () => {
+    if (!currentFolder.value) return;
+    const parts = currentFolder.value.split('/');
+    parts.pop();
+    fetchTracks(parts.join('/'));
+};
+
+const switchToTab = (tab: string) => {
+    currentTab.value = tab;
+    if (window.innerWidth < 768) isSidebarOpen.value = false;
 };
 
 // Theme state
@@ -275,7 +418,6 @@ let pollInterval: any = null;
 // Track Detail Drawer State
 const isDrawerOpen = ref(false);
 const selectedTrack = ref<any>(null);
-const trackListRef = ref<any>(null);
 
 // Player State
 const nowPlayingTrack = ref<any>(null);
@@ -351,9 +493,7 @@ const closeEditDrawer = () => {
 
 const onTrackSaved = () => {
     showToast('msg_save_ok');
-    if (trackListRef.value) {
-        trackListRef.value.refresh();
-    }
+    fetchTracks(currentFolder.value);
 };
 
 const toggleLang = () => {
@@ -380,7 +520,7 @@ const triggerScan = async () => {
         await axios.post('/api/trigger-scan');
         showToast('msg_scan_ok');
         refreshStatus();
-        if (trackListRef.value) trackListRef.value.refresh();
+        fetchTracks(currentFolder.value);
     } catch (e) {
         showToast('msg_scan_fail');
     }
@@ -391,23 +531,24 @@ const triggerScrape = async () => {
         await axios.post('/api/trigger-scrape');
         showToast('msg_scrape_ok');
         refreshStatus();
-        if (trackListRef.value) trackListRef.value.refresh();
+        fetchTracks(currentFolder.value);
     } catch (e) {
         showToast('msg_scrape_fail');
     }
 };
 
 onMounted(() => {
-    setupAxios(); // Important: set up existing token if any
     if (isAuthenticated.value) {
         refreshStatus();
+        fetchTracks();
     }
     // Auto refresh every 3 seconds to see progress
     pollInterval = setInterval(() => {
         if (!isAuthenticated.value) return;
         refreshStatus();
-        if (trackListRef.value && status.value?.dbStatus.pending && status.value.dbStatus.pending > 0) {
-           trackListRef.value.refresh();
+        // If in library, check if we need to refresh list
+        if (currentTab.value === 'library' && status.value?.dbStatus.pending && status.value.dbStatus.pending > 0) {
+           fetchTracks(currentFolder.value);
         }
     }, 3000);
 });

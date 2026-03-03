@@ -37,6 +37,7 @@
         <!-- Scrollable Content -->
         <div class="p-6 flex-1 flex flex-col gap-6">
           <div class="flex flex-col gap-4">
+
             <!-- URL Input -->
             <div class="flex flex-col gap-2">
               <label class="text-sm font-semibold text-slate-400 uppercase tracking-wider">{{ t('downloader.url_placeholder') }}</label>
@@ -249,6 +250,31 @@ const parseUrl = async () => {
     }
 }
 
+const parseDailySongs = async () => {
+    try {
+        isParsing.value = true;
+        parsedData.value = null;
+        logs.value = [];
+        
+        const res = await axios.get('/api/netease/recommend/songs', { 
+            params: { cookie: cookieData.value } 
+        });
+        if (res.data.success) {
+            parsedData.value = {
+                type: 'playlist',
+                name: t('downloader.recommend_songs'),
+                coverUrl: '', 
+                trackIds: res.data.data.map((s: any) => s.id)
+            };
+            addLog(t('downloader.info_playlist_parsed', { count: res.data.data.length }));
+        }
+    } catch (e: any) {
+        addLog(`Fetch daily songs failed: ${e.message}`);
+    } finally {
+        isParsing.value = false;
+    }
+}
+
 const downloadSingle = async (id: number | string): Promise<boolean> => {
     try {
         addLog(t('downloader.log_downloading', { id, level: selectedLevel.value }));
@@ -323,7 +349,6 @@ const startDownload = async () => {
 
 watch(() => props.isOpen, (newVal) => {
     if (!newVal) {
-        // Reset state after drawer closed
         setTimeout(() => {
             inputUrl.value = '';
             parsedData.value = null;
@@ -331,5 +356,11 @@ watch(() => props.isOpen, (newVal) => {
             isParsing.value = false;
         }, 300);
     }
+});
+
+defineExpose({
+    inputUrl,
+    parseUrl,
+    parseDailySongs
 });
 </script>

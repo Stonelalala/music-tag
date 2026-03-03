@@ -1,4 +1,61 @@
-import { song_detail, song_url_v1, playlist_detail, lyric } from 'NeteaseCloudMusicApi';
+import { song_detail, song_url_v1, playlist_detail, lyric, recommend_resource, recommend_songs, personalized } from 'NeteaseCloudMusicApi';
+
+export async function fetchNeteaseRecommendPlaylists(cookie: string) {
+    let items: any[] = [];
+    try {
+        // 1. Try Personalized (usually returns ~30 items, works even with guest/partial cookie)
+        const resP = await personalized({ cookie, limit: 30 });
+        if (resP.status === 200 && (resP.body as any).result) {
+            items = (resP.body as any).result.map((r: any) => ({
+                id: r.id,
+                name: r.name,
+                coverUrl: r.picUrl,
+                trackCount: r.trackCount || 0,
+                playCount: r.playCount || 0
+            }));
+        }
+
+        // 2. Try Recommend Resource (official daily recommendation, requires strict music_u login)
+        const resR = await recommend_resource({ cookie });
+        if (resR.status === 200 && (resR.body as any).recommend) {
+            const dailies = (resR.body as any).recommend.map((r: any) => ({
+                id: r.id,
+                name: r.name,
+                coverUrl: r.picUrl,
+                trackCount: r.trackCount || 0,
+                playCount: r.playCount || 0
+            }));
+            // Merge and put daily ones at the front
+            dailies.forEach((d: any) => {
+                if (!items.find(i => i.id === d.id)) items.unshift(d);
+            });
+        }
+    } catch (e: any) {
+        console.error('Fetch netease recommend playlists failed:', e.message);
+    }
+    return items;
+}
+
+export async function fetchNeteaseRecommendSongs(cookie: string) {
+    try {
+        const res = await recommend_songs({ cookie });
+        const data = (res.body as any).data;
+        if (res.status === 200 && data && data.dailySongs) {
+            return data.dailySongs.map((song: any) => ({
+                id: song.id,
+                title: t2s(song.name || ''),
+                artist: t2s(song.ar ? song.ar.map((a: any) => a.name).join(', ') : ''),
+                album: t2s(song.al?.name || ''),
+                coverUrl: song.al?.picUrl || null,
+                duration: song.dt ? song.dt / 1000 : 0,
+            }));
+        }
+    } catch (e: any) {
+        console.error('Fetch netease recommend songs failed:', e);
+    }
+    return [];
+}
+
 import axios from 'axios';
 import * as fs from 'fs';
 import * as path from 'path';
@@ -7,7 +64,8 @@ import crypto from 'crypto';
 import type { Database } from 'better-sqlite3';
 
 const OpenCC = require('opencc-js');
-const t2s = OpenCC.Converter({ from: 't', to: 'cn' });
+const converter = OpenCC.Converter({ from: 't', to: 'cn' });
+const t2s = (text: string | undefined | null) => text ? converter(text) : '';
 
 export async function parseNeteaseUrl(url: string) {
     let type = '';
@@ -35,8 +93,9 @@ export async function parseNeteaseUrl(url: string) {
 export async function fetchNeteaseSongDetail(id: number | string) {
     try {
         const res = await song_detail({ ids: id.toString() });
-        if (res.status === 200 && (res.body as any).songs && Array.isArray((res.body as any).songs)) {
-            const song = (res.body as any).songs[0];
+        const songs = (res.body as any).songs;
+        if (res.status === 200 && songs && Array.isArray(songs) && songs.length > 0) {
+            const song = songs[0];
             return {
                 id: song.id,
                 title: t2s(song.name || ''),
@@ -55,12 +114,19 @@ export async function fetchNeteaseSongDetail(id: number | string) {
 export async function fetchNeteasePlaylist(id: number | string) {
     try {
         const res = await playlist_detail({ id: id.toString() });
-        if (res.status === 200 && (res.body as any).playlist) {
-            const playlist = (res.body as any).playlist;
+        const playlist = (res.body as any).playlist;
+        if (res.status === 200 && playlist) {
             return {
                 name: playlist.name,
                 coverUrl: playlist.coverImgUrl,
-                trackIds: playlist.trackIds.map((t: any) => t.id)
+                trackIds: playlist.trackIds ? playlist.trackIds.map((t: any) => t.id) : [],
+                tracks: playlist.tracks ? playlist.tracks.map((t: any) => ({
+                    id: t.id,
+                    title: t2s(t.name || ''),
+                    artist: t2s(t.ar ? t.ar.map((a: any) => a.name).join(', ') : ''),
+                    album: t2s(t.al?.name || ''),
+                    coverUrl: t.al?.picUrl || null
+                })) : []
             };
         }
     } catch (e: any) {

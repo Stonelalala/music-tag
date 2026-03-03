@@ -45,6 +45,7 @@ export default {
 
     // Track List & Details
     tab_dashboard: '控制看板',
+    tab_discovery: '发现与推荐',
     tab_tracks: '音乐库列表',
     col_file: '文件名',
     col_title: '标题',
@@ -98,7 +99,12 @@ export default {
         log_preparing: '[{current}/{total}] 预热提取目标 ID:{id}',
         log_finished: '🎉 集群收割全部执行完毕！成果统计：成功落地 [{success}] 首 | 绝版拦截废弃 [{failed}] 首。',
         cookie_placeholder: '在此粘贴包含 MUSIC_U 一整大段的 Cookie 文本...',
-        quality_master: '母带 (Master)'
+        quality_master: '母带 (Master)',
+        recommend_title: '探索与推荐',
+        pull_recommend_btn: '获取每日推荐',
+        recommend_songs: '每日 30 首 (Songs)',
+        recommend_playlists: '个性化歌单 (Playlists)',
+        recommend_fetch_fail: '获取推荐失败，请检查 Cookie 是否有效'
     },
 
     ui: {

@@ -566,8 +566,67 @@ import {
     fetchNeteaseSongDetail,
     fetchNeteasePlaylist,
     fetchNeteaseDownloadUrl,
-    downloadAndTagNeteaseSong
+    downloadAndTagNeteaseSong,
+    fetchNeteaseRecommendPlaylists,
+    fetchNeteaseRecommendSongs
 } from './netease';
+
+const getStoredConfig = () => {
+    try {
+        const configPath = path.join(dataDir, 'settings.json');
+        if (fs.existsSync(configPath)) {
+            return JSON.parse(fs.readFileSync(configPath, 'utf8'));
+        }
+    } catch (e) {
+        console.error('Failed to read config file', e);
+    }
+    return {};
+};
+
+app.get('/api/netease/recommend/playlists', async (req, res) => {
+    try {
+        let cookie = req.query.cookie as string || '';
+        if (!cookie) {
+            cookie = getStoredConfig().neteaseCookie || '';
+        }
+
+        if (!cookie) return res.status(400).json({ success: false, error: 'Cookie is required' });
+        const playlists = await fetchNeteaseRecommendPlaylists(cookie);
+        res.json({ success: true, data: playlists });
+    } catch (e: any) {
+        res.status(500).json({ success: false, error: e.message });
+    }
+});
+
+app.get('/api/netease/recommend/songs', async (req, res) => {
+    try {
+        let cookie = req.query.cookie as string || '';
+        if (!cookie) {
+            cookie = getStoredConfig().neteaseCookie || '';
+        }
+
+        if (!cookie) return res.status(400).json({ success: false, error: 'Cookie is required' });
+        const songs = await fetchNeteaseRecommendSongs(cookie);
+        res.json({ success: true, data: songs });
+    } catch (e: any) {
+        res.status(500).json({ success: false, error: e.message });
+    }
+});
+
+
+app.get('/api/netease/playlist/:id', async (req, res) => {
+    try {
+        const id = req.params.id;
+        const data = await fetchNeteasePlaylist(id);
+        if (data) {
+            res.json({ success: true, data });
+        } else {
+            res.status(404).json({ success: false, error: 'Playlist not found' });
+        }
+    } catch (e: any) {
+        res.status(500).json({ success: false, error: e.message });
+    }
+});
 
 app.post('/api/netease/parse', async (req, res) => {
     try {
