@@ -1,5 +1,74 @@
 <template>
-  <div class="h-screen bg-app-primary text-app-primary flex flex-col font-sans overflow-hidden">
+  <!-- Login Page (Always Dark Theme for high contrast) -->
+  <div v-if="!isAuthenticated" class="h-screen w-screen bg-[#020617] flex items-center justify-center p-4 selection:bg-emerald-500/30">
+    <!-- Animated background glow -->
+    <div class="absolute inset-0 overflow-hidden pointer-events-none">
+        <div class="absolute -top-[10%] -left-[10%] w-[40%] h-[40%] bg-emerald-500/10 rounded-full blur-[120px]"></div>
+        <div class="absolute -bottom-[10%] -right-[10%] w-[40%] h-[40%] bg-blue-500/10 rounded-full blur-[120px]"></div>
+    </div>
+
+    <div class="w-full max-w-md bg-[#0f172a] border border-white/5 rounded-3xl shadow-[0_32px_64px_-16px_rgba(0,0,0,0.6)] p-10 space-y-8 relative z-10">
+      <div class="text-center space-y-3">
+        <div class="w-20 h-20 bg-emerald-500/20 text-emerald-400 rounded-3xl flex items-center justify-center mx-auto mb-6 shadow-xl shadow-emerald-500/5 transition-transform hover:scale-105 duration-500">
+          <svg xmlns="http://www.w3.org/2000/svg" width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></svg>
+        </div>
+        <h1 class="text-3xl font-black text-white tracking-tight">{{ t('login.title') || '用户登录' }}</h1>
+        <p class="text-slate-400 font-medium">{{ t('login.subtitle') || '请验证您的身份以管理音乐库' }}</p>
+      </div>
+
+      <form @submit.prevent="handleLogin" class="space-y-6">
+        <div class="space-y-2">
+          <label class="text-[10px] font-black text-slate-500 uppercase tracking-[0.2em] px-1">{{ t('login.username') || '用户名' }}</label>
+          <div class="relative group">
+              <input 
+                v-model="loginForm.username" 
+                type="text" 
+                class="w-full bg-[#1e293b] border border-white/10 rounded-2xl px-5 py-4 text-white font-bold placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-emerald-500/50 focus:bg-[#0f172a] transition-all duration-300"
+                style="color: white !important;"
+                placeholder="admin"
+              />
+          </div>
+        </div>
+        <div class="space-y-2">
+          <label class="text-[10px] font-black text-slate-500 uppercase tracking-[0.2em] px-1">{{ t('login.password') || '密码' }}</label>
+          <div class="relative group">
+              <input 
+                v-model="loginForm.password" 
+                type="password" 
+                class="w-full bg-[#1e293b] border border-white/10 rounded-2xl px-5 py-4 text-white font-bold placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-emerald-500/50 focus:bg-[#0f172a] transition-all duration-300"
+                style="color: white !important;"
+                placeholder="••••••••"
+              />
+          </div>
+        </div>
+
+        <div v-if="loginError" class="text-rose-400 text-xs text-center font-bold bg-rose-500/10 py-3 rounded-xl border border-rose-500/20 animate-in fade-in zoom-in-95">
+          {{ loginError }}
+        </div>
+
+        <button 
+          type="submit" 
+          :disabled="isLoggingIn"
+          class="w-full bg-emerald-500 hover:bg-emerald-400 text-[#020617] font-black py-4 rounded-2xl shadow-xl shadow-emerald-500/10 active:scale-[0.98] transition-all duration-300 disabled:opacity-50 disabled:cursor-not-allowed group relative overflow-hidden"
+        >
+          <div class="absolute inset-0 bg-white/10 opacity-0 group-hover:opacity-100 transition-opacity"></div>
+          <span v-if="!isLoggingIn" class="relative z-10">{{ t('login.submit') || '立 刻 入 库' }}</span>
+          <span v-else class="flex items-center justify-center gap-3 relative z-10">
+            <div class="w-5 h-5 border-3 border-slate-950/30 border-t-slate-950 rounded-full animate-spin"></div>
+            {{ t('login.logging_in') || '验证中...' }}
+          </span>
+        </button>
+      </form>
+
+      <div class="text-center pt-6 border-t border-white/5">
+        <button @click="toggleLang" class="text-slate-500 hover:text-white text-xs font-bold transition-colors uppercase tracking-widest">
+          {{ t('lang_toggle') === '中文' ? 'English' : '中文' }} / LOCALES
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <div v-else class="h-screen bg-app-primary text-app-primary flex flex-col font-sans overflow-hidden">
     <!-- Header (Fixed Height, No Scroll) -->
     <header class="bg-app-sidebar border-b border-app h-14 px-4 md:px-6 flex-shrink-0 flex items-center justify-between shadow-xl z-50">
       <div class="flex items-center gap-2">
@@ -59,6 +128,11 @@
                     </button>
                     <button @click="isSettingsOpen = true" class="w-full text-left px-3 py-2 text-sm text-slate-300 hover:bg-slate-700 rounded flex items-center gap-2 transition text-slate-300">
                         {{ t('settings_btn') }}
+                    </button>
+                    <div class="h-px bg-slate-700 mx-2 my-1"></div>
+                    <button @click="logout" class="w-full text-left px-3 py-2 text-sm text-rose-400 hover:bg-rose-500/10 rounded flex items-center gap-2 transition">
+                         <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
+                         {{ t('logout_btn') }}
                     </button>
                     <div class="md:hidden h-px bg-slate-700 mx-2 my-1"></div>
                     <button @click="toggleLang" class="md:hidden w-full text-left px-3 py-2 text-sm text-slate-400 hover:bg-slate-700 rounded transition">
@@ -136,10 +210,30 @@ import NeteaseDownloader from './components/NeteaseDownloader.vue';
 import SettingsModal from './components/SettingsModal.vue';
 import MusicPlayer from './components/MusicPlayer.vue';
 import { toastMsg, useToast } from './composables/useToast';
-import { watch } from 'vue';
+import { useAuth } from './composables/useAuth';
+import { watch, reactive } from 'vue';
 
 const { t, locale } = useI18n({ useScope: 'global' });
 const { showToast: globalShowToast } = useToast();
+const { isAuthenticated, login, logout, setupAxios, token } = useAuth();
+
+// Login State
+const loginForm = reactive({ username: '', password: '' });
+const isLoggingIn = ref(false);
+const loginError = ref('');
+
+const handleLogin = async () => {
+    if (!loginForm.username || !loginForm.password) return;
+    isLoggingIn.value = true;
+    loginError.value = '';
+    const result = await login(loginForm.username, loginForm.password);
+    isLoggingIn.value = false;
+    if (result.success) {
+        refreshStatus();
+    } else {
+        loginError.value = result.error || 'Unknown error';
+    }
+};
 
 // Theme state
 const themes = ['midnight', 'ocean', 'rose', 'forest', 'amber', 'frost', 'sakura', 'mint'];
@@ -204,7 +298,13 @@ const playTrack = (track: any, list: any[] = []) => {
 
     nowPlayingTrack.value = null;
     setTimeout(() => {
-        nowPlayingTrack.value = track;
+        // Append auth token to media URLs for the player
+        const trackWithAuth = { ...track };
+        if (token.value) {
+            trackWithAuth._streamUrl = `/api/tracks/${track.id}/stream?auth=${token.value}`;
+            trackWithAuth._coverUrl = `/api/tracks/${track.id}/cover?auth=${token.value}`;
+        }
+        nowPlayingTrack.value = trackWithAuth;
     }, 50);
 };
 
@@ -298,9 +398,13 @@ const triggerScrape = async () => {
 };
 
 onMounted(() => {
-    refreshStatus();
+    setupAxios(); // Important: set up existing token if any
+    if (isAuthenticated.value) {
+        refreshStatus();
+    }
     // Auto refresh every 3 seconds to see progress
     pollInterval = setInterval(() => {
+        if (!isAuthenticated.value) return;
         refreshStatus();
         if (trackListRef.value && status.value?.dbStatus.pending && status.value.dbStatus.pending > 0) {
            trackListRef.value.refresh();

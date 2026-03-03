@@ -1,0 +1,19 @@
+version: '3.8'
+
+services:
+  music-tag:
+    build: .
+    container_name: music-tag
+    ports:
+      - "8002:8002"
+    environment:
+      - MUSIC_DIR=/music
+      - DATA_DIR=/app/config
+      - ADMIN_USER=admin
+      - ADMIN_PASS=admin
+      - JWT_SECRET=music-tag-secret-7788
+      - CRON_SCHEDULE=0 2 * * *
+    volumes:
+      - ./config:/app/config
+      - /your/music/path:/music # Change this to your actual music folder
+    restart: unless-stopped

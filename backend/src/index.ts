@@ -7,6 +7,8 @@ import fs from 'fs';
 import multer from 'multer';
 import NodeID3 from 'node-id3';
 import axios from 'axios';
+import jwt from 'jsonwebtoken';
+import bcrypt from 'bcryptjs';
 
 dotenv.config();
 
@@ -28,6 +30,50 @@ const upload = multer({ storage: multer.memoryStorage() }); // Multer initializa
 
 app.use(cors());
 app.use(express.json());
+
+const JWT_SECRET = process.env.JWT_SECRET || 'music-tag-secret-key-123';
+
+// Auth Middleware
+const authenticate = (req: any, res: any, next: any) => {
+    if (req.path === '/auth/login') return next();
+
+    const authHeader = req.headers.authorization;
+    const token = authHeader?.split(' ')[1] || req.query.auth as string;
+
+    if (!token) {
+        return res.status(401).json({ success: false, error: 'Unauthorized' });
+    }
+
+    try {
+        const decoded = jwt.verify(token, JWT_SECRET);
+        (req as any).user = decoded;
+        next();
+    } catch (err) {
+        return res.status(401).json({ success: false, error: 'Invalid token' });
+    }
+};
+
+app.use('/api', authenticate);
+
+// Auth Routes
+app.post('/api/auth/login', (req, res) => {
+    const { username, password } = req.body;
+    try {
+        const user = db.prepare('SELECT * FROM users WHERE username = ?').get(username) as any;
+        if (user && bcrypt.compareSync(password, user.password)) {
+            const token = jwt.sign({ id: user.id, username: user.username }, JWT_SECRET, { expiresIn: '7d' });
+            res.json({ success: true, token, user: { id: user.id, username: user.username } });
+        } else {
+            res.status(401).json({ success: false, error: 'Invalid username or password' });
+        }
+    } catch (e: any) {
+        res.status(500).json({ success: false, error: e.message });
+    }
+});
+
+app.get('/api/auth/check', (req, res) => {
+    res.json({ success: true, user: (req as any).user });
+});
 
 app.get('/api/status', (req, res) => {
     // Quick overall info API
@@ -692,6 +738,18 @@ app.post('/api/settings/config', (req, res) => {
         res.json({ success: true });
     } catch (e: any) {
         res.status(500).json({ success: false, error: e.message });
+    }
+});
+// STATIC ASSETS
+const frontendDist = path.join(__dirname, '../../frontend/dist');
+app.use(express.static(frontendDist));
+app.get(/.*/, (req, res, next) => {
+    if (req.path.startsWith('/api')) return next();
+    const indexPath = path.join(frontendDist, 'index.html');
+    if (fs.existsSync(indexPath)) {
+        res.sendFile(indexPath);
+    } else {
+        res.status(404).json({ success: false, error: 'Frontend not built. Please run npm run build in frontend.' });
     }
 });
 

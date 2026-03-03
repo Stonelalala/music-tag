@@ -27,6 +27,15 @@ export default {
     theme_frost: '极地冰雪',
     theme_sakura: '樱落时节',
     theme_mint: '薄荷苏打',
+    logout_btn: '退出登录',
+    login: {
+        title: '用户登录',
+        subtitle: '请验证您的身份以继续管理音乐库',
+        username: '用户名',
+        password: '密码',
+        submit: '立即进入曲库',
+        logging_in: '正在验证身份...'
+    },
 
     // Player
     player_notplaying: '暂无播放',

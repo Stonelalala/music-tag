@@ -8,6 +8,8 @@ interface Track {
     artist: string;
     album: string;
     filepath: string;
+    _streamUrl?: string;
+    _coverUrl?: string;
 }
 
 interface LyricLine {
@@ -23,6 +25,8 @@ const props = defineProps<{
 
 const emit = defineEmits(['close', 'next', 'prev', 'select']);
 const { t } = useI18n();
+import { useAuth } from '../composables/useAuth';
+const { token } = useAuth();
 
 const isMobile = ref(window.innerWidth < 768);
 window.addEventListener('resize', () => {
@@ -36,7 +40,6 @@ const duration = ref(0);
 const volume = ref(Number(localStorage.getItem('APP_VOLUME')) || 0.7);
 const showLyrics = ref(false);
 const showPlaylist = ref(false);
-const isMuted = ref(false);
 const isFullscreen = ref(false);
 
 const lyricsLines = ref<LyricLine[]>([]);
@@ -155,7 +158,8 @@ const updateVolume = (e: Event) => {
 const fetchLyrics = async () => {
     if (!props.track) return;
     try {
-        const res = await fetch(`/api/tracks/${props.track.id}/lyrics`);
+        const url = `/api/tracks/${props.track.id}/lyrics${token.value ? '?auth=' + token.value : ''}`;
+        const res = await fetch(url);
         const json = await res.json();
         if (json.success && json.lyrics) {
             lyricsLines.value = parseLyrics(json.lyrics);
@@ -172,7 +176,7 @@ const loadAndPlay = async (track: Track) => {
     if (!audio.value) return;
     
     try {
-        const streamUrl = `/api/tracks/${track.id}/stream`;
+        const streamUrl = (track as any)._streamUrl || `/api/tracks/${track.id}/stream`;
         audio.value.pause();
         audio.value.src = streamUrl;
         audio.value.load();
@@ -239,7 +243,7 @@ onUnmounted(() => {
             <!-- Left Side: Dynamic Vinyl Cover -->
             <div class="hidden md:flex flex-col items-center flex-1 animate-fade-in">
                 <div class="w-[340px] h-[340px] lg:w-[460px] lg:h-[460px] rounded-full overflow-hidden shadow-[0_30px_90px_rgba(0,0,0,0.6)] border-[12px] border-white/5 relative group">
-                    <img :src="`/api/tracks/${track.id}/cover`" class="w-full h-full object-cover transition-transform duration-1000 group-hover:scale-105" :class="{ 'animate-spin-slow': isPlaying }" />
+                    <img :src="(track as any)._coverUrl || `/api/tracks/${track.id}/cover`" class="w-full h-full object-cover transition-transform duration-1000 group-hover:scale-105" :class="{ 'animate-spin-slow': isPlaying }" />
                     <div class="absolute inset-0 bg-gradient-to-tr from-black/40 via-transparent to-white/10"></div>
                     <!-- Center Hole -->
                     <div class="absolute inset-[42%] rounded-full bg-app-sidebar border-[6px] border-white/10 shadow-inner flex items-center justify-center">
@@ -258,7 +262,7 @@ onUnmounted(() => {
             <!-- Mobile: Static Cover and Title -->
             <div class="md:hidden flex flex-col items-center gap-4 text-center mt-4">
                 <div class="w-48 h-48 rounded-3xl shadow-2xl overflow-hidden border border-white/10">
-                    <img :src="`/api/tracks/${track.id}/cover`" class="w-full h-full object-cover" />
+                    <img :src="(track as any)._coverUrl || `/api/tracks/${track.id}/cover`" class="w-full h-full object-cover" />
                 </div>
                 <div>
                    <h1 class="text-2xl font-black tracking-tight text-app-primary px-4 line-clamp-1">{{ track.title }}</h1>
@@ -289,7 +293,7 @@ onUnmounted(() => {
                              @click="emit('select', idx)"
                              class="flex items-center gap-3 p-2 rounded-lg cursor-pointer transition mb-1"
                              :class="idx === currentIndex ? 'bg-cyan-500/20 text-cyan-400' : 'hover:bg-black/5 text-app-primary opacity-60 hover:opacity-100'">
-                            <img :src="`/api/tracks/${item.id}/cover`" class="w-8 h-8 rounded object-cover" />
+                            <img :src="(item as any)._coverUrl || `/api/tracks/${item.id}/cover${token ? '?auth=' + token : ''}`" class="w-8 h-8 rounded object-cover" />
                             <div class="flex-1 min-w-0">
                                 <p class="text-xs font-bold truncate">{{ item.title }}</p>
                                 <p class="text-[10px] opacity-50 truncate">{{ item.artist }}</p>
@@ -345,7 +349,7 @@ onUnmounted(() => {
                      @click="emit('select', idx)"
                      class="flex items-center gap-3 p-2.5 rounded-xl cursor-pointer transition-all mb-2 group"
                      :class="idx === currentIndex ? 'bg-app-accent/20 border border-app-accent/30' : 'hover:bg-white/5 border border-transparent'">
-                    <img :src="`/api/tracks/${item.id}/cover`" class="w-10 h-10 rounded-lg object-cover shadow-md group-hover:scale-105 transition-transform" />
+                    <img :src="(item as any)._coverUrl || `/api/tracks/${item.id}/cover${token ? '?auth=' + token : ''}`" class="w-10 h-10 rounded-lg object-cover shadow-md group-hover:scale-105 transition-transform" />
                     <div class="flex-1 min-w-0">
                         <p class="text-xs font-bold truncate transition-colors" :class="idx === currentIndex ? 'text-app-accent' : 'text-app-primary'">{{ item.title }}</p>
                         <p class="text-[10px] font-semibold opacity-60 truncate text-app-primary">{{ item.artist }}</p>
@@ -385,7 +389,7 @@ onUnmounted(() => {
             <!-- Song Info Peek -->
             <div class="flex items-center gap-4 flex-1 min-w-0 cursor-pointer" @click="isFullscreen = true">
                 <div class="w-12 h-12 rounded-xl overflow-hidden shadow-lg border border-white/10 shrink-0 relative group/cover">
-                    <img :src="`/api/tracks/${track.id}/cover`" class="w-full h-full object-cover group-hover:scale-110 transition-transform duration-500" />
+                    <img :src="(track as any)._coverUrl || `/api/tracks/${track.id}/cover`" class="w-full h-full object-cover group-hover:scale-110 transition-transform duration-500" />
                     <div class="absolute inset-0 bg-black/40 opacity-0 group-hover/cover:opacity-100 transition-opacity flex items-center justify-center">
                         <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" class="text-white"><path d="M15 3h6v6"/><path d="M9 21H3v-6"/><path d="M21 3l-7 7"/><path d="M3 21l7-7"/></svg>
                     </div>

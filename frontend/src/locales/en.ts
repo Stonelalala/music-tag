@@ -27,6 +27,15 @@ export default {
     theme_frost: 'Polar Frost',
     theme_sakura: 'Sakura Petal',
     theme_mint: 'Mint Fizz',
+    logout_btn: 'Logout',
+    login: {
+        title: 'User Login',
+        subtitle: 'Please authenticate to manage your music library',
+        username: 'Username',
+        password: 'Password',
+        submit: 'Login Now',
+        logging_in: 'Authenticating...'
+    },
 
     // Player
     player_notplaying: 'Not Playing',

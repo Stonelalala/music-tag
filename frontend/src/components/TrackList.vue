@@ -78,21 +78,6 @@
         </div>
       </div>
 
-      <!-- User Profile Card -->
-      <div class="p-4 border-t border-app">
-          <div class="bg-app-muted/20 rounded-2xl p-4 flex items-center gap-3 border border-app shadow-inner">
-              <div class="w-10 h-10 rounded-full overflow-hidden bg-app-muted border border-app shadow-sm">
-                  <img src="https://api.dicebear.com/7.x/avataaars/svg?seed=Admin" class="w-full h-full object-cover" />
-              </div>
-              <div class="flex-1 min-w-0">
-                  <p class="text-[11px] font-black text-app-primary truncate">Admin NAS</p>
-                  <p class="text-[9px] font-bold text-app-muted uppercase tracking-widest">{{ t('ui.tracks.pro_plan') }}</p>
-              </div>
-              <button class="text-app-muted hover:text-app-primary transition-colors pr-1">
-                  <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1V15a2 2 0 0 1-2-2 2 2 0 0 1 2-2v-.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2v.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
-              </button>
-          </div>
-      </div>
     </aside>
 
 
@@ -120,7 +105,7 @@
             <div class="flex items-center gap-3 mt-8">
                 <div class="flex -space-x-3">
                     <div v-for="i in 3" :key="i" class="w-10 h-10 rounded-full border-2 border-app bg-app-muted flex items-center justify-center text-[10px] font-bold overflow-hidden shadow-lg">
-                        <img v-if="tracks[i-1]" :src="`/api/tracks/${tracks[i-1].id}/cover`" class="w-full h-full object-cover" />
+                        <img v-if="tracks[i-1]" :src="`/api/tracks/${tracks[i-1].id}/cover${token ? '?auth=' + token : ''}`" class="w-full h-full object-cover" />
                         <span v-else>?</span>
                     </div>
                 </div>
@@ -211,7 +196,7 @@
               <td class="px-3 py-3">
                   <div class="flex items-center gap-4">
                       <div class="w-14 h-14 bg-app-muted rounded-xl overflow-hidden flex-shrink-0 border border-app shadow-2xl group-hover:scale-105 transition-transform relative">
-                          <img :src="`/api/tracks/${track.id}/cover`" @error="onImageError" class="w-full h-full object-cover" />
+                          <img :src="`/api/tracks/${track.id}/cover${token ? '?auth=' + token : ''}`" @error="onImageError" class="w-full h-full object-cover" />
                           <div class="absolute inset-0 bg-app-accent/20 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
                               <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="currentColor" class="text-white"><polygon points="5 3 19 12 5 21 5 3"/></svg>
                           </div>
@@ -298,10 +283,13 @@ import axios from 'axios';
 import OrganizeModal from './OrganizeModal.vue';
 import DeduplicateModal from './DeduplicateModal.vue';
 import { useToast } from '../composables/useToast';
+import { useAuth } from '../composables/useAuth';
 
 const props = defineProps<{
   status: any | null
 }>();
+
+const { token } = useAuth();
 
 const emit = defineEmits(['edit', 'play', 'refresh']);
 const { t } = useI18n();
