@@ -61,4 +61,4 @@ EXPOSE 8002
 HEALTHCHECK --interval=30s --timeout=10s --start-period=15s --retries=3 \
     CMD wget --no-verbose --tries=1 --spider http://localhost:8002/api/status || exit 1
 
-CMD ["npx", "--prefix", "backend", "tsx", "src/index.ts"]
+CMD ["npx", "--prefix", "backend", "tsx", "backend/src/index.ts"]
