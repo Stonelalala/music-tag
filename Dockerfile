@@ -6,7 +6,8 @@ WORKDIR /app/frontend
 COPY frontend/package*.json ./
 RUN npm ci --no-audit --no-fund
 COPY frontend/ ./
-RUN npm run build
+# Skip vue-tsc type checking in Docker build (handled in dev/CI lint stage)
+RUN npx vite build
 
 # ============================================
 # Stage 2: Install Backend Dependencies
