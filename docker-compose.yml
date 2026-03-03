@@ -1,8 +1,35 @@
+# ============================================
+# 本地开发用（docker build 构建）
+# ============================================
+# version: '3.8'
+# services:
+#   music-tag:
+#     build: .
+#     container_name: music-tag
+#     ports:
+#       - "8002:8002"
+#     environment:
+#       - MUSIC_DIR=/music
+#       - DATA_DIR=/app/config
+#       - ADMIN_USER=admin
+#       - ADMIN_PASS=admin
+#       - JWT_SECRET=music-tag-secret-7788
+#       - CRON_SCHEDULE=0 2 * * *
+#     volumes:
+#       - ./config:/app/config
+#       - /your/music/path:/music
+#     restart: unless-stopped
+
+# ============================================
+# NAS 部署用（直接拉取镜像）
+# ⚠️ 修改 DOCKER_HUB_USERNAME 为你的用户名
+# ⚠️ 修改 /your/music/path 为 NAS 上的音乐目录
+# ============================================
 version: '3.8'
 
 services:
   music-tag:
-    build: .
+    image: stonelalala/music-tag:latest
     container_name: music-tag
     ports:
       - "8002:8002"
@@ -10,10 +37,19 @@ services:
       - MUSIC_DIR=/music
       - DATA_DIR=/app/config
       - ADMIN_USER=admin
-      - ADMIN_PASS=admin
-      - JWT_SECRET=music-tag-secret-7788
-      - CRON_SCHEDULE=0 2 * * *
+      - ADMIN_PASS=admin # ⚠️ 请修改为安全密码
+      - JWT_SECRET=music-tag-secret-7788 # ⚠️ 请修改为随机字符串
+      - CRON_SCHEDULE=0 2 * * * # 每天凌晨2点自动扫描
     volumes:
-      - ./config:/app/config
-      - /your/music/path:/music # Change this to your actual music folder
+      - music-tag-config:/app/config # 持久化配置和数据库
+      - /volume1/music:/music # ⚠️ 修改为你的 NAS 音乐目录
     restart: unless-stopped
+    healthcheck:
+      test: [ "CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:8002/api/status" ]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 15s
+
+volumes:
+  music-tag-config:
