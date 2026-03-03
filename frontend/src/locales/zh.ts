@@ -101,7 +101,8 @@ export default {
             organize: '自动整理目录',
             dedupe: '查杀重复歌曲',
             library: '媒体库',
-            folders: '文件夹'
+            folders: '文件夹',
+            files: '音乐文件'
         },
         tracks: {
             title: '音乐库列表',

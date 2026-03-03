@@ -23,7 +23,7 @@
           <h3 class="px-4 text-[10px] font-black text-app-muted uppercase tracking-widest mb-4">{{ t('ui.sidebar.library') }}</h3>
           <ul class="space-y-1">
             <li v-for="item in [{id:'overview', icon:'layout-grid', label:t('tab_dashboard')}]" :key="item.id">
-              <button @click="fetchTracks('')" class="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl transition-all group" :class="!currentFolder ? 'bg-app-accent/10 text-app-accent shadow-sm' : 'text-app-muted hover:bg-app-muted/30 hover:text-app-primary'">
+              <button @click="fetchTracks('')" class="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl transition-all group" :class="!currentFolder ? 'bg-app-accent/10 text-app-accent shadow-sm' : 'text-app-muted hover:bg-app-accent/10 hover:text-app-primary'">
                 <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" class="opacity-70"><rect width="7" height="7" x="3" y="3" rx="1"/><rect width="7" height="7" x="14" y="3" rx="1"/><rect width="7" height="7" x="14" y="14" rx="1"/><rect width="7" height="7" x="3" y="14" rx="1"/></svg>
                 <span class="text-xs font-bold leading-none">{{ item.label }}</span>
               </button>
@@ -45,15 +45,34 @@
             <li v-for="folder in folders" :key="'sidebar_f_'+folder">
               <button 
                 @click="enterFolder(folder)"
-                class="w-full text-left px-3 py-2.5 rounded-xl flex items-center gap-3 transition-colors text-app-muted hover:bg-app-muted/30 hover:text-app-primary group"
+                class="w-full text-left px-3 py-2.5 rounded-xl flex items-center gap-3 transition-colors text-app-muted hover:bg-app-accent/10 hover:text-app-primary group"
               >
                 <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" class="text-app-muted group-hover:text-app-primary transition-colors opacity-60"><path d="M4 20h16a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.93a2 2 0 0 1-1.66-.9l-.82-1.2A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13c0 1.1.9 2 2 2Z"/></svg>
                 <span class="text-xs font-bold truncate max-w-[150px]">{{ folder }}</span>
               </button>
             </li>
 
-            <li v-if="folders.length === 0 && !currentFolder" class="px-4 py-4 text-[10px] items-start text-app-muted italic opacity-60 bg-app-muted/10 rounded-xl">
+            <li v-if="folders.length === 0 && !currentFolder && tracks.length === 0" class="px-4 py-4 text-[10px] items-start text-app-muted italic opacity-60 bg-app-muted/10 rounded-xl">
                 {{ t('ui.sidebar.empty') }}
+            </li>
+          </ul>
+        </div>
+
+        <!-- Section: Music Files in Current Folder -->
+        <div v-if="tracks.length > 0">
+          <h3 class="px-4 text-[10px] font-black text-app-muted uppercase tracking-widest mb-4">{{ t('ui.sidebar.files') || '音乐文件' }}</h3>
+          <ul class="space-y-0.5">
+            <li v-for="track in tracks" :key="'sidebar_t_'+track.id">
+              <button 
+                @click="emit('play', track, tracks)"
+                class="w-full text-left px-3 py-2 rounded-xl flex items-center gap-3 transition-colors text-app-muted hover:bg-app-accent/10 hover:text-app-primary group"
+              >
+                <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="text-app-accent/60 group-hover:text-app-accent transition-colors shrink-0"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></svg>
+                <div class="flex flex-col min-w-0">
+                  <span class="text-[11px] font-bold truncate max-w-[150px]">{{ track.title || track.filename }}</span>
+                  <span class="text-[9px] text-app-muted truncate max-w-[150px]">{{ track.artist }}</span>
+                </div>
+              </button>
             </li>
           </ul>
         </div>

@@ -15,7 +15,7 @@ export default {
                     accent: 'var(--accent-color)',
                     card: 'var(--bg-card)',
                     border: 'var(--border-color)',
-                }
+                },
             },
             backgroundColor: {
                 'slate-900': 'var(--bg-primary)',
@@ -29,6 +29,10 @@ export default {
                 'sky-600': 'var(--accent-button)',
             },
             textColor: {
+                'app-primary': 'var(--text-primary)',
+                'app-secondary': 'var(--text-secondary)',
+                'app-muted': 'var(--text-muted)',
+                'app-accent': 'var(--accent-text)',
                 'slate-100': 'var(--text-primary)',
                 'slate-200': 'var(--text-primary)',
                 'slate-300': 'var(--text-primary)',

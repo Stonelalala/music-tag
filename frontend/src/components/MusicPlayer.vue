@@ -235,7 +235,7 @@ onUnmounted(() => {
             <svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="group-hover:rotate-90 transition-transform duration-300"><line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" /></svg>
         </button>
 
-        <div class="relative z-10 w-full max-w-7xl h-full flex flex-col md:flex-row items-center justify-center gap-8 md:gap-16">
+        <div class="relative z-10 w-full max-w-7xl h-full flex flex-col md:flex-row items-center justify-center gap-4 md:gap-16 pb-40 md:pb-0">
             <!-- Left Side: Dynamic Vinyl Cover -->
             <div class="hidden md:flex flex-col items-center flex-1 animate-fade-in">
                 <div class="w-[340px] h-[340px] lg:w-[460px] lg:h-[460px] rounded-full overflow-hidden shadow-[0_30px_90px_rgba(0,0,0,0.6)] border-[12px] border-white/5 relative group">
@@ -256,20 +256,20 @@ onUnmounted(() => {
             </div>
 
             <!-- Mobile: Static Cover and Title -->
-            <div class="md:hidden flex flex-col items-center gap-6 text-center mt-8">
-                <div class="w-64 h-64 rounded-3xl shadow-2xl overflow-hidden border border-white/10">
+            <div class="md:hidden flex flex-col items-center gap-4 text-center mt-4">
+                <div class="w-48 h-48 rounded-3xl shadow-2xl overflow-hidden border border-white/10">
                     <img :src="`/api/tracks/${track.id}/cover`" class="w-full h-full object-cover" />
                 </div>
                 <div>
-                   <h1 class="text-3xl font-black tracking-tight text-app-primary">{{ track.title }}</h1>
-                   <p class="text-lg font-bold opacity-60 text-app-secondary mt-1">{{ track.artist }}</p>
+                   <h1 class="text-2xl font-black tracking-tight text-app-primary px-4 line-clamp-1">{{ track.title }}</h1>
+                   <p class="text-base font-bold opacity-60 text-app-secondary mt-1">{{ track.artist }}</p>
                 </div>
             </div>
 
             <!-- Middle/Right: Lyrics -->
             <div class="flex-1 h-full w-full flex flex-col justify-center relative">
-                <div ref="fullscreenLyricsContainer" class="h-[40vh] md:h-[60vh] overflow-y-auto px-4 custom-scrollbar scroll-smooth">
-                    <div class="flex flex-col items-center py-[20vh] md:py-[25vh]">
+                <div ref="fullscreenLyricsContainer" class="h-[30vh] md:h-[60vh] overflow-y-auto px-4 custom-scrollbar scroll-smooth">
+                    <div class="flex flex-col items-center py-[15vh] md:py-[25vh]">
                         <p v-for="(line, index) in lyricsLines" :key="index"
                            class="lyric-line text-base md:text-xl font-bold text-center mb-6 transition-all duration-300"
                            :class="{ 'active-lyric scale-110 opacity-100': index === currentLyricIndex, 'opacity-30': index !== currentLyricIndex }"
@@ -288,7 +288,7 @@ onUnmounted(() => {
                         <div v-for="(item, idx) in playlist" :key="item.id" 
                              @click="emit('select', idx)"
                              class="flex items-center gap-3 p-2 rounded-lg cursor-pointer transition mb-1"
-                             :class="idx === currentIndex ? 'bg-cyan-500/20 text-cyan-400' : 'hover:bg-white/5 text-white/60'">
+                             :class="idx === currentIndex ? 'bg-cyan-500/20 text-cyan-400' : 'hover:bg-black/5 text-app-primary opacity-60 hover:opacity-100'">
                             <img :src="`/api/tracks/${item.id}/cover`" class="w-8 h-8 rounded object-cover" />
                             <div class="flex-1 min-w-0">
                                 <p class="text-xs font-bold truncate">{{ item.title }}</p>
@@ -304,24 +304,24 @@ onUnmounted(() => {
         <div class="absolute bottom-12 w-full max-w-4xl px-8 z-20">
             <div class="flex flex-col gap-4">
                 <div class="flex items-center gap-4">
-                    <span class="text-xs font-mono opacity-50">{{ formatTime(currentTime) }}</span>
+                    <span class="text-xs font-mono text-app-primary opacity-50">{{ formatTime(currentTime) }}</span>
                     <div class="flex-1 h-1.5 relative group cursor-pointer">
                         <input type="range" :min="0" :max="duration || 100" :value="currentTime" @input="seek" class="absolute inset-0 w-full h-full opacity-0 z-20 cursor-pointer" />
-                        <div class="absolute inset-0 bg-white/10 rounded-full overflow-hidden">
+                        <div class="absolute inset-0 bg-app-muted/30 rounded-full overflow-hidden">
                             <div class="h-full bg-gradient-to-r from-emerald-400 to-cyan-400 shadow-[0_0_15px_rgba(52,211,153,0.5)]" :style="{ width: `${(currentTime/(duration || 1))*100}%` }"></div>
                         </div>
                     </div>
-                    <span class="text-xs font-mono opacity-50">{{ formatTime(duration) }}</span>
+                    <span class="text-xs font-mono text-app-primary opacity-50">{{ formatTime(duration) }}</span>
                 </div>
                 <div class="flex justify-center items-center gap-10">
-                   <button @click="emit('prev')" class="text-white/60 hover:text-white transition transform active:scale-90">
+                   <button @click="emit('prev')" class="text-app-primary opacity-40 hover:opacity-100 transition transform active:scale-90">
                        <svg xmlns="http://www.w3.org/2000/svg" width="28" height="28" viewBox="0 0 24 24" fill="currentColor"><path d="M6 6h2v12H6zm3.5 6L19 18V6z"/></svg>
                    </button>
                    <button @click="togglePlay" class="w-16 h-16 rounded-full flex items-center justify-center transition-all shadow-xl hover:scale-110 active:scale-90 bg-cyan-400 text-slate-900">
                      <svg v-if="!isPlaying" xmlns="http://www.w3.org/2000/svg" width="30" height="30" viewBox="0 0 24 24" fill="currentColor"><polygon points="5 3 19 12 5 21 5 3" /></svg>
                      <svg v-else xmlns="http://www.w3.org/2000/svg" width="30" height="30" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="4" width="6" height="16" /><rect x="14" y="4" width="6" height="16" /></svg>
                    </button>
-                   <button @click="emit('next')" class="text-white/60 hover:text-white transition transform active:scale-90">
+                   <button @click="emit('next')" class="text-app-primary opacity-40 hover:opacity-100 transition transform active:scale-90">
                        <svg xmlns="http://www.w3.org/2000/svg" width="28" height="28" viewBox="0 0 24 24" fill="currentColor"><path d="M6 18l8.5-6L6 6v12zM16 6v12h2V6h-2z"/></svg>
                    </button>
                 </div>
@@ -347,8 +347,8 @@ onUnmounted(() => {
                      :class="idx === currentIndex ? 'bg-app-accent/20 border border-app-accent/30' : 'hover:bg-white/5 border border-transparent'">
                     <img :src="`/api/tracks/${item.id}/cover`" class="w-10 h-10 rounded-lg object-cover shadow-md group-hover:scale-105 transition-transform" />
                     <div class="flex-1 min-w-0">
-                        <p class="text-xs font-bold truncate transition-colors" :class="idx === currentIndex ? 'text-emerald-400' : 'text-white'">{{ item.title }}</p>
-                        <p class="text-[10px] font-semibold opacity-60 truncate text-white/70">{{ item.artist }}</p>
+                        <p class="text-xs font-bold truncate transition-colors" :class="idx === currentIndex ? 'text-app-accent' : 'text-app-primary'">{{ item.title }}</p>
+                        <p class="text-[10px] font-semibold opacity-60 truncate text-app-primary">{{ item.artist }}</p>
                     </div>
                 </div>
             </div>

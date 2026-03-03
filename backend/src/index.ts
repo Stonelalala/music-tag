@@ -87,25 +87,33 @@ app.get('/api/tracks', (req, res) => {
         const subfolders = new Set<string>();
         const currentTracks: any[] = [];
 
-        allTracks.forEach(track => {
-            const relativePath = path.relative(MUSIC_DIR, track.filepath);
-            const dirName = path.dirname(relativePath).replace(/\\/g, '/');
+        const normalizedRequestFolder = folder.replace(/\\/g, '/').replace(/^\/|\/$/g, '').toLowerCase();
 
-            const requestFolder = folder.replace(/\\/g, '/').replace(/^\/|\/$/g, '');
-            const trackFolder = dirName === '.' ? '' : dirName;
+        allTracks.forEach(track => {
+            // Normalize path for robust comparison
+            const trackDir = path.dirname(track.filepath);
+            const relativeDir = path.relative(MUSIC_DIR, trackDir).replace(/\\/g, '/');
+            const trackFolder = (relativeDir === '.' || relativeDir === '') ? '' : relativeDir;
+            const normalizedTrackFolder = trackFolder.toLowerCase();
 
             // 1. If we are filtering by status AND NOT by folder, show all matching tracks globally
             if (statusFilter !== null && !folder) {
                 currentTracks.push(track);
             }
-            // 2. RECURSIVE VIEW: If the track is inside the requested folder (or any of its subfolders)
-            else if (trackFolder === requestFolder || trackFolder.startsWith(requestFolder ? requestFolder + '/' : '')) {
+            // 2. Folder View (Recursive - show current level + all subfolders)
+            else if (
+                normalizedTrackFolder === normalizedRequestFolder ||
+                normalizedTrackFolder.startsWith(normalizedRequestFolder ? normalizedRequestFolder + '/' : '')
+            ) {
                 currentTracks.push(track);
 
-                // Also identify the immediate subfolder for navigation (sidebar)
-                if (trackFolder.startsWith(requestFolder ? requestFolder + '/' : '')) {
-                    const remainder = trackFolder.substring(requestFolder ? requestFolder.length + 1 : 0);
-                    const immediateSubfolder = remainder.split('/')[0];
+                // Identify immediate subfolder for sidebar navigation
+                if (normalizedTrackFolder !== normalizedRequestFolder) {
+                    const relativeToRequest = normalizedRequestFolder === ''
+                        ? trackFolder
+                        : trackFolder.substring(normalizedRequestFolder.length + 1);
+
+                    const immediateSubfolder = relativeToRequest.split('/')[0];
                     if (immediateSubfolder) {
                         subfolders.add(immediateSubfolder);
                     }
@@ -262,7 +270,7 @@ app.get('/api/tracks/duplicates', (req, res) => {
 });
 
 // Advanced: Batch rename feature
-app.post('/api/tracks/batch-rename', (req, res) => {
+app.post('/api/batch-rename', (req, res) => {
     try {
         const folder = req.body.folder as string || '';
 

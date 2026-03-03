@@ -101,7 +101,8 @@ export default {
             organize: 'Organize Library',
             dedupe: 'Find Duplicates',
             library: 'Library',
-            folders: 'Folders'
+            folders: 'Folders',
+            files: 'Music Files'
         },
         tracks: {
             title: 'Music Library',

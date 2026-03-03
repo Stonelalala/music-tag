@@ -24,6 +24,9 @@ export async function scanLibrary(musicDir: string) {
         WHERE filepath = @filepath
     `);
 
+    const cleanupStmt = db.prepare('DELETE FROM tracks WHERE filepath = ?');
+    const allKnownFiles = db.prepare('SELECT filepath FROM tracks').all() as { filepath: string }[];
+
     async function walk(currentDir: string) {
         if (!fs.existsSync(currentDir)) return;
 
@@ -91,5 +94,13 @@ export async function scanLibrary(musicDir: string) {
     }
 
     await walk(musicDir);
+
+    console.log(`🧹 [Scanner] Cleaning up orphan records...`);
+    for (const record of allKnownFiles) {
+        if (!fs.existsSync(record.filepath)) {
+            cleanupStmt.run(record.filepath);
+        }
+    }
+
     console.log(`✅ [Scanner] Scan complete. Found ${scannedCount} audio files, added ${addedCount} new files for future scraping.`);
 }
