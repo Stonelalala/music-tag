@@ -75,65 +75,57 @@ app.post('/api/trigger-scrape', async (req, res) => {
 app.get('/api/tracks', (req, res) => {
     try {
         const folder = req.query.folder as string || '';
-        const limit = 1000; // Increase limit for folder view or remove pagination
+        const statusFilter = req.query.status !== undefined ? parseInt(req.query.status as string) : null;
 
-        let tracks;
-        let subfolders = new Set<string>();
+        let allTracks;
+        if (statusFilter !== null) {
+            allTracks = db.prepare(`SELECT * FROM tracks WHERE scrape_status = ? ORDER BY filepath ASC`).all(statusFilter) as any[];
+        } else {
+            allTracks = db.prepare(`SELECT * FROM tracks ORDER BY filepath ASC`).all() as any[];
+        }
 
-        // We fetch all tracks and figure out the directory structure
-        // Since sqlite doesn't have a tree structure natively, we can parse relative to MUSIC_DIR
-        const allTracks = db.prepare(`SELECT * FROM tracks ORDER BY filepath ASC`).all() as any[];
-
+        const subfolders = new Set<string>();
         const currentTracks: any[] = [];
 
-        Object.values(allTracks).forEach(track => {
-            // Get relative path from MUSIC_DIR
+        allTracks.forEach(track => {
             const relativePath = path.relative(MUSIC_DIR, track.filepath);
             const dirName = path.dirname(relativePath).replace(/\\/g, '/');
 
-            // Normalize requested folder
             const requestFolder = folder.replace(/\\/g, '/').replace(/^\/|\/$/g, '');
             const trackFolder = dirName === '.' ? '' : dirName;
 
-            if (trackFolder === requestFolder || (!requestFolder && trackFolder === '')) {
-                // Track is directly in this folder
+            // 1. If we are filtering by status AND NOT by folder, show all matching tracks globally
+            if (statusFilter !== null && !folder) {
                 currentTracks.push(track);
-            } else if (trackFolder.startsWith(requestFolder ? requestFolder + '/' : '')) {
-                // Track is in a subfolder, extract the immediate subfolder name
-                const remainder = trackFolder.substring(requestFolder ? requestFolder.length + 1 : 0);
-                const immediateSubfolder = remainder.split('/')[0];
-                if (immediateSubfolder) {
-                    subfolders.add(immediateSubfolder);
+            }
+            // 2. RECURSIVE VIEW: If the track is inside the requested folder (or any of its subfolders)
+            else if (trackFolder === requestFolder || trackFolder.startsWith(requestFolder ? requestFolder + '/' : '')) {
+                currentTracks.push(track);
+
+                // Also identify the immediate subfolder for navigation (sidebar)
+                if (trackFolder.startsWith(requestFolder ? requestFolder + '/' : '')) {
+                    const remainder = trackFolder.substring(requestFolder ? requestFolder.length + 1 : 0);
+                    const immediateSubfolder = remainder.split('/')[0];
+                    if (immediateSubfolder) {
+                        subfolders.add(immediateSubfolder);
+                    }
                 }
             }
         });
 
-        // Check if songs have lyrics efficiently
         const tracksWithMeta = currentTracks.map(track => {
             let hasLyrics = false;
-            try {
-                if (fs.existsSync(track.filepath)) {
-                    if (track.extension === '.mp3') {
-                        const tags = NodeID3.read(track.filepath);
-                        hasLyrics = !!(tags.unsynchronisedLyrics || tags.synchronisedLyrics);
-                    } else if (track.extension === '.flac') {
-                        const Metaflac = require('metaflac-js');
-                        const flac = new Metaflac(track.filepath);
-                        hasLyrics = flac.getVorbisComment('LYRICS') !== null || flac.getVorbisComment('UNSYNCEDLYRICS') !== null;
-                    }
-                }
-            } catch (err) { /* ignore errors */ }
-
+            // (Optional: skip expensive fs checks for large lists if needed)
             return {
                 ...track,
-                hasLyrics
+                hasLyrics // Currently not performing heavy FS check here to speed up global filter
             };
         });
 
         res.json({
             success: true,
             data: {
-                folders: Array.from(subfolders).sort(),
+                folders: statusFilter !== null && !folder ? [] : Array.from(subfolders).sort(),
                 tracks: tracksWithMeta
             }
         });

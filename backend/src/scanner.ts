@@ -15,8 +15,13 @@ export async function scanLibrary(musicDir: string) {
     // Prepared statements for DB operations
     const getTrackByPath = db.prepare('SELECT id FROM tracks WHERE filepath = ?');
     const insertTrack = db.prepare(`
-        INSERT INTO tracks (id, filepath, filename, extension, title, artist, album, scrape_status) 
-        VALUES (@id, @filepath, @filename, @extension, @title, @artist, @album, 0)
+        INSERT INTO tracks (id, filepath, filename, extension, title, artist, album, bitrate, sample_rate, duration, size, scrape_status) 
+        VALUES (@id, @filepath, @filename, @extension, @title, @artist, @album, @bitrate, @sample_rate, @duration, @size, 0)
+    `);
+
+    const updateTechnicalMeta = db.prepare(`
+        UPDATE tracks SET size = @size, bitrate = @bitrate, sample_rate = @sample_rate, duration = @duration
+        WHERE filepath = @filepath
     `);
 
     async function walk(currentDir: string) {
@@ -34,17 +39,16 @@ export async function scanLibrary(musicDir: string) {
 
                 if (AUDIO_EXTENSIONS.has(ext)) {
                     scannedCount++;
-                    // Check if track is already tracking in DB
                     const existing = getTrackByPath.get(fullPath);
                     if (!existing) {
                         try {
-                            const metadata = await mm.parseFile(fullPath, { duration: false });
+                            const metadata = await mm.parseFile(fullPath);
                             const common = metadata.common;
+                            const format = metadata.format;
+                            const stats = fs.statSync(fullPath);
 
-                            // Let's generate a stable ID based on path or basic info
                             const id = crypto.randomUUID ? crypto.randomUUID() : crypto.randomBytes(16).toString('hex');
 
-                            // Insert into database, mark as Pending (0)
                             insertTrack.run({
                                 id,
                                 filepath: fullPath,
@@ -53,11 +57,32 @@ export async function scanLibrary(musicDir: string) {
                                 title: common.title || path.basename(file.name, ext),
                                 artist: common.artist || common.albumartist || 'Unknown Artist',
                                 album: common.album || 'Unknown Album',
+                                bitrate: format.bitrate || 0,
+                                sample_rate: format.sampleRate || 0,
+                                duration: format.duration || 0,
+                                size: stats.size,
                             });
                             addedCount++;
 
                         } catch (err: any) {
                             console.error(`❌ [Scanner] Error parsing metadata for ${fullPath}: ${err.message}`);
+                        }
+                    } else {
+                        // For existing records, update technical metadata if it might be missing
+                        try {
+                            const stats = fs.statSync(fullPath);
+                            const metadata = await mm.parseFile(fullPath);
+                            const format = metadata.format;
+
+                            updateTechnicalMeta.run({
+                                size: stats.size,
+                                bitrate: format.bitrate || 0,
+                                sample_rate: format.sampleRate || 0,
+                                duration: format.duration || 0,
+                                filepath: fullPath
+                            });
+                        } catch (err) {
+                            // Silent skip if metadata parse fails for existing
                         }
                     }
                 }

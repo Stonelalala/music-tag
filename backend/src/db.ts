@@ -1,4 +1,4 @@
-import Database from 'better-sqlite3';
+import Database, { Database as DBType } from 'better-sqlite3';
 import path from 'path';
 import fs from 'fs';
 
@@ -8,7 +8,7 @@ if (!fs.existsSync(dbDataPath)) {
 }
 export const dbPath = path.join(dbDataPath, 'music_tagger.db');
 
-export const db = new Database(dbPath);
+export const db: DBType = new Database(dbPath);
 
 // Initialize tables
 db.exec(`
@@ -21,6 +21,12 @@ db.exec(`
     artist TEXT,
     album TEXT,
     
+    -- Technical Metadata
+    bitrate INTEGER,
+    sample_rate INTEGER,
+    duration REAL,
+    size INTEGER,
+    
     -- Scrape state: 0=Pending, 1=Success, 2=Failed, 3=Ignored
     scrape_status INTEGER DEFAULT 0,
     last_scraped_at DATETIME,
@@ -29,9 +35,14 @@ db.exec(`
     updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
   );
   
-  -- Prevent slow scans by indexing the filepath
   CREATE INDEX IF NOT EXISTS idx_tracks_filepath ON tracks(filepath);
   CREATE INDEX IF NOT EXISTS idx_tracks_status ON tracks(scrape_status);
 `);
+
+// Migrations for existing DBs
+try { db.exec("ALTER TABLE tracks ADD COLUMN bitrate INTEGER;"); } catch (e) { }
+try { db.exec("ALTER TABLE tracks ADD COLUMN sample_rate INTEGER;"); } catch (e) { }
+try { db.exec("ALTER TABLE tracks ADD COLUMN duration REAL;"); } catch (e) { }
+try { db.exec("ALTER TABLE tracks ADD COLUMN size INTEGER;"); } catch (e) { }
 
 console.log('✅ SQLite Database initialized at:', dbPath);

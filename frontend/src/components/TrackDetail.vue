@@ -4,12 +4,12 @@
     <div class="absolute inset-0 bg-slate-900/60 backdrop-blur-sm" @click="close"></div>
     
     <!-- Modal -->
-    <div class="relative w-full max-w-6xl bg-slate-800 h-full max-h-[90vh] shadow-2xl shadow-black rounded-xl border border-slate-700 flex flex-col md:flex-row overflow-hidden transform transition-all">
+    <div class="relative w-full max-w-6xl bg-slate-800 h-full max-h-[90vh] shadow-2xl shadow-black rounded-xl border border-slate-700 flex flex-col md:flex-row overflow-hidden transform transition-all overflow-y-auto md:overflow-hidden">
       
       <!-- Left Column: Form Edit -->
-      <div class="w-full md:w-[400px] flex flex-col border-r border-slate-700 bg-slate-800 shrink-0 relative">
+      <div class="w-full md:w-[400px] flex flex-col border-b md:border-b-0 md:border-r border-slate-700 bg-slate-800 shrink-0 relative h-auto md:h-full">
         <div class="p-6 border-b border-slate-700 flex justify-between items-center bg-slate-900/40">
-          <h3 class="text-lg font-semibold">{{ $t('edit_drawer_title') || '元数据编辑' }}</h3>
+          <h3 class="text-lg font-semibold">{{ $t('edit_drawer_title') }}</h3>
         </div>
         
         <div class="p-6 flex-1 overflow-y-auto">
@@ -33,8 +33,8 @@
                 </div>
                 <div class="overflow-hidden">
                     <div class="text-sm font-medium text-slate-200 truncate">{{ track?.filename || '...' }}</div>
-                    <div class="text-xs text-slate-500 mt-1 uppercase tracking-wider">{{ track?.extension || 'UNKNOWN' }}</div>
-                    <div class="text-[10px] text-slate-600 mt-1 mt-2">ID: {{ track?.id }}</div>
+                    <div class="text-xs text-slate-500 mt-1 uppercase tracking-wider">{{ track?.extension || $t('ui.edit.unknown_lbl') }}</div>
+                    <div class="text-[10px] text-slate-600 mt-1 mt-2">{{ $t('ui.edit.id_lbl') }}: {{ track?.id }}</div>
                 </div>
             </div>
   
@@ -81,22 +81,20 @@
           </button>
           
           <!-- Search Header -->
-          <div class="p-6 border-b border-slate-700/80 flex flex-col gap-4">
+          <div class="p-4 md:p-6 border-b border-slate-700/80 flex flex-col gap-4">
               <h3 class="text-base font-medium text-slate-200">{{ $t('ui.edit.search_title') }}</h3>
               
-              <div class="flex items-center gap-3 w-full max-w-2xl">
-                  <label class="text-sm text-slate-400 whitespace-nowrap">{{ $t('ui.edit.search_label') }}</label>
-                  <select v-model="searchSource" class="bg-slate-800 border border-slate-600 rounded px-3 py-2 text-sm text-slate-200 focus:border-indigo-500 focus:outline-none">
-                      <option value="qq">QQ音乐</option>
-                      <option value="netease">网易云音乐</option>
-                      <option value="itunes">iTunes Global</option>
-                  </select>
-                  
-                  <div class="flex-1 relative">
-                      <input v-model="searchQuery" @keyup.enter="doSearch" type="text" class="w-full bg-slate-800 border border-slate-600 rounded px-3 py-2 text-sm text-slate-200 focus:border-indigo-500 focus:outline-none" :placeholder="$t('ui.edit.search_placeholder')" />
+              <div class="flex flex-col sm:flex-row items-stretch sm:items-center gap-3 w-full max-w-2xl">
+                  <div class="flex items-center gap-2 flex-1">
+                      <select v-model="searchSource" class="bg-slate-800 border border-slate-600 rounded px-2 md:px-3 py-2 text-xs md:text-sm text-slate-200 focus:border-indigo-500 focus:outline-none shrink-0">
+                          <option value="qq">QQ Music</option>
+                          <option value="netease">NetEase Music</option>
+                          <option value="itunes">iTunes Global</option>
+                      </select>
+                      <input v-model="searchQuery" @keyup.enter="doSearch" type="text" class="flex-1 bg-slate-800 border border-slate-600 rounded px-3 py-2 text-xs md:text-sm text-slate-200 focus:border-indigo-500 focus:outline-none min-w-0" :placeholder="$t('ui.edit.search_placeholder')" />
                   </div>
                   
-                  <button @click="doSearch" :disabled="isSearching" class="bg-indigo-600 hover:bg-indigo-500 text-white px-5 py-2 rounded text-sm transition font-medium flex gap-2 items-center disabled:opacity-50">
+                  <button @click="doSearch" :disabled="isSearching" class="bg-indigo-600 hover:bg-indigo-500 text-white px-5 py-2 rounded text-sm transition font-medium flex gap-2 items-center justify-center disabled:opacity-50">
                      <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
                      {{ $t('ui.edit.search_btn') }}
                   </button>
@@ -147,11 +145,11 @@
                  </tbody>
              </table>
              <div v-else-if="hasSearched" class="text-center py-20 text-slate-500 text-sm">
-                 未找到结果 (No relevant metadata found in {{ searchSource }})
+                 {{ $t('ui.edit.no_results', { source: searchSource }) }}
              </div>
              <div v-else class="text-center py-20 text-slate-600/40 text-sm flex flex-col items-center gap-3">
                  <svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1" stroke-linecap="round" stroke-linejoin="round"><path d="m21 21-6-6m6-6v6a2 2 0 0 1-2 2h-6m-6-6h.01M4 15h.01M4 9h.01M9 4h.01M15 4h.01"/></svg>
-                 在上方输入搜索词并点击检索按钮获取刮削数据
+                 {{ $t('ui.edit.search_hint') }}
              </div>
           </div>
       </div>
@@ -229,7 +227,7 @@ const doSearch = async () => {
         }
     } catch (e) {
         console.error(e);
-        showToast('检索失败 (Search Failed). Check backend logs.');
+        showToast(t('msg_scan_fail'));
     } finally {
         isSearching.value = false;
         hasSearched.value = true;
@@ -315,7 +313,7 @@ const save = async () => {
     }
   } catch (e) {
     console.error(e);
-    showToast('Failed to save.');
+    showToast(t('msg_save_fail'));
   } finally {
     saving.value = false;
   }

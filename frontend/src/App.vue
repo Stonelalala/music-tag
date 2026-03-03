@@ -1,126 +1,123 @@
 <template>
-  <div class="min-h-screen bg-slate-900 text-slate-100 flex flex-col font-sans">
-    <!-- Header -->
-    <header class="bg-slate-800 border-b border-slate-700 py-4 px-6 fixed top-0 w-full z-40 flex items-center justify-between">
-      <div class="flex items-center gap-3">
-        <div class="w-8 h-8 rounded bg-emerald-500/20 text-emerald-400 flex items-center justify-center">
-            <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2v20"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>
-        </div>
-        <div>
-          <h1 class="text-xl font-bold bg-gradient-to-r from-emerald-400 to-cyan-400 bg-clip-text text-transparent">{{ $t('title') }}</h1>
-          <p class="text-xs text-slate-400">{{ $t('subtitle') }}</p>
-        </div>
-      </div>
-      <div class="flex items-center gap-4">
-        
-        <!-- Language Switcher -->
-        <button @click="toggleLang" class="text-xs px-2 py-1 bg-slate-700 hover:bg-slate-600 rounded text-slate-300 transition border border-slate-600">
-           {{ $t('lang_toggle') }}
+  <div class="h-screen bg-app-primary text-app-primary flex flex-col font-sans overflow-hidden">
+    <!-- Header (Fixed Height, No Scroll) -->
+    <header class="bg-app-sidebar border-b border-app h-14 px-4 md:px-6 flex-shrink-0 flex items-center justify-between shadow-xl z-50">
+      <div class="flex items-center gap-2">
+        <!-- Mobile Menu Trigger -->
+        <button 
+          @click="trackListRef?.openSidebar()" 
+          class="md:hidden w-10 h-10 rounded-xl bg-app-accent/10 text-app-accent flex items-center justify-center shrink-0 active:scale-90 transition-transform"
+        >
+            <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
         </button>
 
-        <!-- Theme Picker -->
-        <div class="relative group/theme">
-          <button class="text-xs px-2 py-1 bg-slate-700 hover:bg-slate-600 rounded text-slate-300 transition border border-slate-600 flex items-center gap-1">
-             <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v2"/><path d="M12 20v2"/><path d="m4.93 4.93 1.41 1.41"/><path d="m17.66 17.66 1.41 1.41"/><path d="M2 12h2"/><path d="M20 12h2"/><path d="m6.34 17.66-1.41 1.41"/><path d="m19.07 4.93-1.41 1.41"/></svg>
-             {{ $t('theme_toggle') }}
-          </button>
-          <div class="absolute right-0 mt-2 w-32 bg-slate-800 border border-slate-700 rounded shadow-xl opacity-0 invisible group-hover/theme:opacity-100 group-hover/theme:visible transition-all z-50">
-             <div class="p-1 flex flex-col gap-1">
-                <button v-for="tname in themes" :key="tname" @click="currentTheme = tname" 
-                   class="text-left px-2 py-1.5 text-[11px] rounded transition flex items-center gap-2"
-                   :class="currentTheme === tname ? 'bg-indigo-600 text-white' : 'text-slate-300 hover:bg-slate-700'">
-                   <span class="w-2 h-2 rounded-full" :class="getThemeColor(tname)"></span>
-                   {{ $t(`theme_${tname}`) }}
-                </button>
-             </div>
+        <!-- Desktop Identity -->
+        <div class="hidden md:flex items-center gap-3">
+          <div class="w-8 h-8 rounded bg-emerald-500/20 text-emerald-400 flex items-center justify-center shrink-0">
+              <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></svg>
+          </div>
+          <div class="hidden sm:block">
+            <h1 class="text-sm md:text-xl font-bold bg-gradient-to-r from-emerald-500 to-cyan-500 bg-clip-text text-transparent truncate">{{ t('title') }}</h1>
+            <p class="text-[10px] md:text-xs text-app-muted truncate">{{ t('subtitle') }}</p>
           </div>
         </div>
 
-        <button @click="refreshStatus" class="p-2 text-slate-400 hover:text-slate-100 transition cursor-pointer" :title="$t('refresh_btn')">
+        <!-- Mobile Title (Compact) -->
+        <h1 class="md:hidden text-base font-black tracking-tighter text-app-primary uppercase">{{ t('title').substring(0, 4) }}</h1>
+      </div>
+
+      <div class="flex items-center gap-2 md:gap-4">
+        <button @click="toggleLang" class="hidden md:block text-xs px-2 py-1 bg-app-muted hover:bg-app-secondary rounded text-app-primary border border-app">
+           {{ t('lang_toggle') }}
+        </button>
+
+        <button @click="refreshStatus" class="p-2 text-app-muted hover:text-app-primary transition">
             <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/></svg>
         </button>
+
         <div class="relative group">
-            <button class="bg-indigo-600 group-hover:bg-indigo-500 transition px-4 py-2 rounded-md font-medium text-sm flex items-center gap-2" :disabled="!!status && status.dbStatus.pending === 0">
+            <button class="btn-app-accent transition px-3 md:px-4 py-2 rounded-md font-bold text-sm flex items-center gap-2 shadow-lg" :disabled="!!status && status.dbStatus.pending === 0">
                 <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2" /></svg>
-                {{ $t('scraper_title') }}
+                <span class="hidden sm:inline">{{ t('scraper_title') }}</span>
                 <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="ml-1"><path d="m6 9 6 6 6-6"/></svg>
             </button>
-            <div class="absolute right-0 mt-2 w-[22rem] bg-slate-800 border border-slate-700 rounded-lg shadow-xl shadow-black/50 opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all duration-200 z-50 transform origin-top-right scale-95 group-hover:scale-100">
-                <div class="p-4 border-b border-slate-700">
-                    <p class="text-xs text-slate-400 leading-relaxed">{{ $t('scraper_desc') }}</p>
-                    <p v-if="status" class="text-[10px] text-slate-500 mt-2 font-mono truncate" :title="status.musicDir">{{ $t('watched_dir') }}: {{ status.musicDir }}</p>
+            <div class="absolute right-0 mt-2 w-[85vw] sm:w-[22rem] bg-app-sidebar border border-app rounded-lg shadow-xl shadow-black/50 opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all duration-200 z-[60] transform origin-top-right scale-95 group-hover:scale-100">
+                <div class="p-4 border-b border-app">
+                    <p class="text-xs text-app-secondary">{{ t('scraper_desc') }}</p>
+                    <p v-if="status" class="text-[10px] text-app-muted mt-2 font-mono truncate">{{ t('watched_dir') }}: {{ status.musicDir }}</p>
                 </div>
                 <div class="p-2 flex flex-col gap-1">
-                    <button @click="triggerScan" class="w-full text-left px-3 py-2 text-sm text-slate-300 hover:bg-slate-700 rounded flex items-center gap-2 transition">
-                        <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" x2="12" y1="15" y2="3"/></svg>
-                        {{ $t('scan_btn') }}
+                    <button @click="triggerScan" class="w-full text-left px-3 py-2 text-sm hover:bg-app-muted rounded flex items-center gap-2 transition text-app-primary">
+                        {{ t('scan_btn') }}
                     </button>
-                    <button @click="triggerScrape" :disabled="!!status && status.dbStatus.pending === 0" class="w-full text-left px-3 py-2 text-sm text-emerald-400 hover:bg-emerald-500/10 rounded flex items-center gap-2 disabled:opacity-40 disabled:cursor-not-allowed transition">
-                        <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2" /></svg>
-                        {{ $t('scrape_btn') }}
+                    <button @click="triggerScrape" :disabled="!!status && status.dbStatus.pending === 0" class="w-full text-left px-3 py-2 text-sm text-emerald-400 hover:bg-emerald-500/10 rounded flex items-center gap-2 disabled:opacity-40 transition">
+                        {{ t('scrape_btn') }}
                     </button>
-                    <!-- Divider -->
                     <div class="h-px bg-slate-700 mx-2 my-1"></div>
                     <button @click="isNeteaseOpen = true" class="w-full text-left px-3 py-2 text-sm text-rose-400 hover:bg-rose-500/10 rounded flex items-center gap-2 transition">
-                        <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2v20"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>
-                        {{ $t('downloader.title') }}
+                        {{ t('downloader.title') }}
                     </button>
-                    <button @click="isSettingsOpen = true" class="w-full text-left px-3 py-2 text-sm text-slate-300 hover:bg-slate-700 rounded flex items-center gap-2 transition">
-                        <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.1a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/><circle cx="12" cy="12" r="3"/></svg>
-                        {{ $t('settings_btn') }}
+                    <button @click="isSettingsOpen = true" class="w-full text-left px-3 py-2 text-sm text-slate-300 hover:bg-slate-700 rounded flex items-center gap-2 transition text-slate-300">
+                        {{ t('settings_btn') }}
                     </button>
+                    <div class="md:hidden h-px bg-slate-700 mx-2 my-1"></div>
+                    <button @click="toggleLang" class="md:hidden w-full text-left px-3 py-2 text-sm text-slate-400 hover:bg-slate-700 rounded transition">
+                        {{ t('lang_toggle') }}
+                    </button>
+                    <!-- Theme Selector -->
+                    <div class="h-px bg-slate-700 mx-2 my-1"></div>
+                    <div class="px-3 py-2">
+                        <p class="text-[10px] text-slate-500 uppercase font-bold tracking-widest mb-2">{{ t('theme_toggle') }}</p>
+                        <div class="grid grid-cols-4 gap-2">
+                           <button 
+                             v-for="tname in themes" 
+                             :key="tname" 
+                             @click="currentTheme = tname"
+                             class="w-full h-6 rounded border transition relative"
+                             :class="[currentTheme === tname ? 'border-indigo-400 ring-1 ring-indigo-400' : 'border-slate-700', getThemeColor(tname)]"
+                           ></button>
+                        </div>
+                    </div>
                 </div>
             </div>
         </div>
       </div>
     </header>
 
-    <!-- Main Content -->
-    <main class="flex-1 mt-20 p-6 md:p-8 max-w-[1400px] mx-auto w-full" :class="nowPlayingTrack ? 'pb-24' : ''">
-        <!-- Status Cards -->
-        <div class="grid grid-cols-1 md:grid-cols-4 gap-4 mb-8" v-if="status">
-            <div class="bg-slate-800/50 border border-slate-700 p-5 rounded-xl flex flex-col items-center text-center">
-                <span class="text-slate-400 text-xs font-semibold uppercase tracking-wider mb-1">{{ $t('db_total') }}</span>
-                <span class="text-3xl font-bold text-slate-100">{{ status.dbStatus.total }}</span>
-            </div>
-            <div class="bg-emerald-500/5 border border-emerald-500/20 p-5 rounded-xl flex flex-col items-center text-center">
-                <span class="text-emerald-400/80 text-xs font-semibold uppercase tracking-wider mb-1">{{ $t('db_success') }}</span>
-                <span class="text-3xl font-bold text-emerald-400">{{ status.dbStatus.success }}</span>
-            </div>
-            <div class="bg-amber-500/5 border border-amber-500/20 p-5 rounded-xl flex flex-col items-center text-center">
-                <span class="text-amber-400/80 text-xs font-semibold uppercase tracking-wider mb-1">{{ $t('db_pending') }}</span>
-                <span class="text-3xl font-bold text-amber-400">{{ status.dbStatus.pending }}</span>
-            </div>
-            <div class="bg-rose-500/5 border border-rose-500/20 p-5 rounded-xl flex flex-col items-center text-center">
-                <span class="text-rose-400/80 text-xs font-semibold uppercase tracking-wider mb-1">{{ $t('db_failed') }}</span>
-                <span class="text-3xl font-bold text-rose-400">{{ status.dbStatus.failed }}</span>
+    <!-- Main Content Area (Flexible, No Internal Page Scroll) -->
+    <main class="flex-1 overflow-hidden relative">
+        <div class="h-full w-full p-2 md:p-3 max-w-full mx-auto flex flex-col">
+            <template v-if="status">
+                <TrackList 
+                    ref="trackListRef" 
+                    :status="status"
+                    @edit="openEditDrawer" 
+                    @play="(track, list) => playTrack(track, list)"
+                    @refresh="triggerScan"
+                />
+            </template>
+            <div v-else class="text-center py-20 text-slate-500 flex flex-col items-center justify-center flex-1">
+                <div class="animate-pulse flex flex-col items-center gap-4">
+                   <div class="w-12 h-12 rounded-full border-4 border-slate-700 border-t-indigo-500 animate-spin"></div>
+                   {{ t('connecting') }}
+                </div>
             </div>
         </div>
-        
-        <div v-else class="text-center py-12 text-slate-500">
-            {{ $t('connecting') }}
-        </div>
-
-        <!-- Toast messages are integrated below -->
+        <!-- Toast messages -->
         <div v-if="toastMsg" class="fixed top-6 left-1/2 -translate-x-1/2 bg-slate-800 text-cyan-400 text-sm px-5 py-3 rounded-full border border-slate-600 shadow-2xl z-[9999] animate-bounce whitespace-nowrap">
             {{ toastMsg }}
         </div>
-
-        <TrackList 
-            ref="trackListRef" 
-            @edit="openEditDrawer" 
-            @play="(track, list) => playTrack(track, list)"
-        />
     </main>
-    
+
+    <!-- Global Components -->
     <MusicPlayer 
         :track="nowPlayingTrack" 
         :playlist="playlist"
         :currentIndex="currentIndex"
         :key="nowPlayingTrack?.id || 'none'" 
         @close="nowPlayingTrack = null" 
-        @next="playNext"
-        @prev="playPrev"
+        @next="playNext" 
+        @prev="playPrev" 
         @select="playAt"
     />
     <TrackDetail :is-open="isDrawerOpen" :track="selectedTrack" @close="closeEditDrawer" @saved="onTrackSaved" />

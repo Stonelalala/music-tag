@@ -7,36 +7,14 @@ export default {
     theme: {
         extend: {
             colors: {
-                slate: {
-                    50: 'var(--bg-primary)',
-                    100: 'var(--text-primary)',
-                    200: 'var(--text-primary)',
-                    300: 'var(--text-primary)',
-                    400: 'var(--text-secondary)',
-                    500: 'var(--text-muted)',
-                    600: 'var(--text-muted)',
-                    700: 'var(--border-color)',
-                    800: 'var(--bg-secondary)',
-                    900: 'var(--bg-primary)',
-                },
-                indigo: {
-                    50: 'var(--bg-muted)',
-                    100: 'var(--bg-muted)',
-                    200: 'var(--text-secondary)',
-                    300: 'var(--accent-text)',
-                    400: 'var(--accent-text)',
-                    500: 'var(--accent-button-hover)',
-                    600: 'var(--accent-button)',
-                    900: 'var(--bg-primary)',
-                },
-                emerald: {
-                    400: 'var(--accent-text)',
-                    500: 'var(--accent-color)',
-                },
-                rose: {
-                    400: 'var(--accent-text)',
-                    500: 'var(--accent-color)',
-                    600: 'var(--accent-button)',
+                app: {
+                    primary: 'var(--bg-primary)',
+                    secondary: 'var(--bg-secondary)',
+                    sidebar: 'var(--bg-sidebar)',
+                    muted: 'var(--bg-muted)',
+                    accent: 'var(--accent-color)',
+                    card: 'var(--bg-card)',
+                    border: 'var(--border-color)',
                 }
             },
             backgroundColor: {

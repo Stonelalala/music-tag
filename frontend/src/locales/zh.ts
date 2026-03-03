@@ -3,15 +3,15 @@ export default {
     subtitle: 'NAS 批量全自动版',
     scan_btn: '扫描 NAS 音乐库',
     refresh_btn: '刷新状态',
-    db_total: '数据库总曲目数',
-    db_success: '成功完成标签回写',
-    db_pending: '等待刮削列队中',
-    db_failed: '由于未找到或错误失败',
+    db_total: '总计曲目',
+    db_success: '成功回写',
+    db_pending: '等待队列',
+    db_failed: '识别失败',
     connecting: '正在连接后端监控...',
     scraper_title: '全自动刮削引擎',
     scraper_desc: '刮削器会自动从包含海量曲目的 SQLite 队列表中读取无头苍蝇音频，按序智能地从公共匹配接口(iTunes/网易云)调取音乐元数据并将高清封面与歌词等深层信息写入源文件。这被每天凌晨通过 CRON 自动执行。',
     scrape_btn: '强制立即启动批量刮削',
-    settings_btn: '数据源与引擎设置 (敬请期待)',
+    settings_btn: '设置与 API 配置',
     watched_dir: '当前挂载的监听目录',
     msg_scan_ok: '系统已成功在后台触发扫描任务！请注意观察数据变化。',
     msg_scan_fail: '扫描触发请求失败，请检查网络。',
@@ -31,7 +31,7 @@ export default {
     // Player
     player_notplaying: '暂无播放',
     player_lyrics_empty: '暂无歌词',
-    player_lyrics_notfound: '未找到本地歌词',
+    player_lyrics_notfound: '暂未找到有效的动态歌词',
     play_now: '立即播放',
 
     // Track List & Details
@@ -87,7 +87,9 @@ export default {
         log_refused: 'ERR: 下载拒绝服务 - {error}',
         log_interrupted: '🛑 用户已强行中断或取消后续队列！',
         log_preparing: '[{current}/{total}] 预热提取目标 ID:{id}',
-        log_finished: '🎉 集群收割全部执行完毕！成果统计：成功落地 [{success}] 首 | 绝版拦截废弃 [{failed}] 首。'
+        log_finished: '🎉 集群收割全部执行完毕！成果统计：成功落地 [{success}] 首 | 绝版拦截废弃 [{failed}] 首。',
+        cookie_placeholder: '在此粘贴包含 MUSIC_U 一整大段的 Cookie 文本...',
+        quality_master: '母带 (Master)'
     },
 
     ui: {
@@ -97,7 +99,9 @@ export default {
             back: '返回上一级',
             empty: '( 空目录 )',
             organize: '自动整理目录',
-            dedupe: '查杀重复歌曲'
+            dedupe: '查杀重复歌曲',
+            library: '媒体库',
+            folders: '文件夹'
         },
         tracks: {
             title: '音乐库列表',
@@ -105,10 +109,28 @@ export default {
             rename_btn: '一键格式化重命名',
             renaming: '重命名中...',
             no_audio: '该文件夹下没有音频文件',
+            no_audio_hint: '请尝试选择其他文件夹或重新扫描',
             confirm_rename_title: '一键格式化重命名',
             confirm_rename_desc: '该操作即将把本文件夹内已刮削出信息的全部音频物理重命名为 Artist - Title.ext，是否继续？',
             confirm_cancel: '取消',
-            confirm_continue: '继续执行'
+            confirm_continue: '继续执行',
+            library_view: '媒体库视图',
+            playlist_title: '播放队列',
+            hi_res_library: 'Hi-Res 乐库',
+            sync_desc: '您的 {count} 首曲目已通过 NAS 实现全端同步。',
+            recently_scanned: '最近扫描于 24h 前',
+            overall_stats: '全局统计',
+            live: '实时',
+            synced_ok: '已同步',
+            need_fix: '待修复',
+            rescan_lib: '重新扫描库',
+            root: '根目录',
+            pro_dashboard: '专业控制台',
+            pro_plan: '专业版',
+            rename_success: '批量重命名成功！',
+            matched: '匹配成功',
+            error: '刮削错误',
+            pending: '等待中'
         },
         edit: {
             search_title: '在线元数据刮削检索 (Metadata Search)',
@@ -124,7 +146,11 @@ export default {
             search_hint: '在上方输入搜索词并点击检索按钮获取刮削数据',
             apply_success: '信息已填充！请检查并点击下方"保存信息"进行物理写入。',
             fetch_lyrics_btn: '外网补全歌词',
-            upcoming_feature: '此功能即将实现 (Background Engine integration pending)'
+            upcoming_feature: '此功能即将实现 (Background Engine integration pending)',
+            id_lbl: 'ID',
+            unknown_lbl: '未知',
+            filename_lbl: '文件名',
+            extension_lbl: '扩展名'
         },
         dedupe: {
             title: '智能清理重复文件',
@@ -171,6 +197,18 @@ export default {
             valid_error: '请输入至少一个有效的目录层级',
             success_msg: '成功为您移动并整理了 {count} 个音频文件！',
             fail_msg: '文件整理失败: {error}'
+        },
+        settings: {
+            netease_cookie_label: '网易云个人 Cookie (VIP 权限)',
+            netease_cookie_hint: '用于解锁网易云无损 (Lossless) 和 Hi-Res 音质下载权限。请填入包含 MUSIC_U 的完整 Cookie 字符串。',
+            qq_cookie_label: 'QQ 音乐个人 Cookie (VIP 权限)',
+            qq_cookie_hint: '用于解锁 QQ 音乐高音质下载。目前建议使用 Meting 代理中转，若有独立解析需求可在此填入。',
+            configured: '已配置',
+            save_btn: '保存更改',
+            saving_btn: '正在保存...',
+            save_success: '配置已保存 (可能需要重启服务生效)'
         }
-    }
+    },
+    col_size: '大小',
+    player_lyrics_error: '加载歌词失败'
 };

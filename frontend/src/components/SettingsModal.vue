@@ -21,7 +21,7 @@
       leave-from-class="scale-100 opacity-100"
       leave-to-class="scale-95 opacity-0"
     >
-      <div v-show="isOpen" class="fixed left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 w-full max-w-md bg-slate-900 border border-slate-700 z-[101] shadow-2xl rounded-2xl overflow-hidden flex flex-col">
+      <div v-show="isOpen" class="fixed left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 w-[90vw] md:w-full md:max-w-md bg-slate-900 border border-slate-700 z-[101] shadow-2xl rounded-2xl overflow-hidden flex flex-col">
         
         <!-- Header -->
         <div class="px-6 py-4 border-b border-slate-800 flex items-center justify-between">
@@ -40,10 +40,10 @@
           <!-- Netease Cookie Section -->
           <div class="flex flex-col gap-3">
              <div class="flex items-center justify-between">
-                <label class="text-sm font-bold text-slate-200">网易云个人 Cookie (VIP 权限)</label>
-                <span class="text-[10px] text-emerald-400 font-mono" v-if="config.neteaseCookie">已配置</span>
+                <label class="text-sm font-bold text-slate-200">{{ t('ui.settings.netease_cookie_label') }}</label>
+                <span class="text-[10px] text-emerald-400 font-mono" v-if="config.neteaseCookie">{{ t('ui.settings.configured') }}</span>
              </div>
-             <p class="text-xs text-slate-500 leading-relaxed">用于解锁网易云无损 (Lossless) 和 Hi-Res 音质下载权限。请填入包含 MUSIC_U 的完整 Cookie 字符串。</p>
+             <p class="text-xs text-slate-500 leading-relaxed">{{ t('ui.settings.netease_cookie_hint') }}</p>
              <textarea 
                 v-model="config.neteaseCookie"
                 placeholder="在此粘贴 Netease Cookie..."
@@ -54,10 +54,10 @@
           <!-- QQ Music Cookie Section -->
           <div class="flex flex-col gap-3">
              <div class="flex items-center justify-between">
-                <label class="text-sm font-bold text-slate-200">QQ 音乐个人 Cookie (VIP 权限)</label>
-                <span class="text-[10px] text-emerald-400 font-mono" v-if="config.qqCookie">已配置</span>
+                <label class="text-sm font-bold text-slate-200">{{ t('ui.settings.qq_cookie_label') }}</label>
+                <span class="text-[10px] text-emerald-400 font-mono" v-if="config.qqCookie">{{ t('ui.settings.configured') }}</span>
              </div>
-             <p class="text-xs text-slate-500 leading-relaxed">用于解锁 QQ 音乐高音质下载。目前建议使用 Meting 代理中转，若有独立解析需求可在此填入。</p>
+             <p class="text-xs text-slate-500 leading-relaxed">{{ t('ui.settings.qq_cookie_hint') }}</p>
              <textarea 
                 v-model="config.qqCookie"
                 placeholder="在此粘贴 QQ Music Cookie..."
@@ -70,11 +70,11 @@
         <!-- Footer -->
         <div class="p-4 bg-slate-800/50 border-t border-slate-800 flex justify-end gap-3">
            <button @click="$emit('close')" class="px-4 py-2 text-sm text-slate-400 hover:text-slate-100 transition">
-              取消
+              {{ t('btn_cancel') }}
            </button>
            <button @click="saveConfig" :disabled="isSaving" class="bg-indigo-600 hover:bg-indigo-500 text-white px-6 py-2 rounded-lg text-sm font-bold transition flex items-center gap-2">
               <span v-if="isSaving" class="animate-spin w-4 h-4 border-2 border-white/20 border-t-white rounded-full"></span>
-              {{ isSaving ? '正在保存...' : '保存更改' }}
+              {{ isSaving ? t('ui.settings.saving_btn') : t('ui.settings.save_btn') }}
            </button>
         </div>
       </div>
@@ -85,6 +85,7 @@
 <script setup lang="ts">
 import { ref, watch, onMounted } from 'vue';
 import axios from 'axios';
+import { useI18n } from 'vue-i18n';
 import { useToast } from '../composables/useToast';
 
 const props = defineProps({
@@ -92,6 +93,7 @@ const props = defineProps({
 });
 
 const emit = defineEmits(['close']);
+const { t } = useI18n();
 const { showToast } = useToast();
 
 const config = ref({
@@ -117,7 +119,7 @@ const saveConfig = async () => {
       isSaving.value = true;
       const res = await axios.post('/api/settings/config', config.value);
       if (res.data.success) {
-         showToast('配置已保存 (可能需要重启服务生效)');
+         showToast(t('ui.settings.save_success'));
          // 同步到本地存储以便 Downloader 直接使用
          if (config.value.neteaseCookie) {
              localStorage.setItem('NETEASE_COOKIE', config.value.neteaseCookie);
@@ -125,7 +127,7 @@ const saveConfig = async () => {
          emit('close');
       }
    } catch (e) {
-      showToast('保存失败');
+      showToast(t('msg_save_fail'));
    } finally {
       isSaving.value = false;
    }

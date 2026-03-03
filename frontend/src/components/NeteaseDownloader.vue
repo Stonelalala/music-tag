@@ -21,7 +21,7 @@
       leave-from-class="translate-x-0"
       leave-to-class="translate-x-full"
     >
-      <div v-show="isOpen" class="fixed right-0 top-0 h-full w-full w-full md:w-[480px] lg:w-[600px] bg-slate-900 border-l border-slate-700 z-[101] shadow-2xl overflow-y-auto flex flex-col">
+      <div v-show="isOpen" class="fixed right-0 top-0 h-full w-full md:w-[480px] lg:w-[600px] bg-slate-900 border-l border-slate-700 z-[101] shadow-2xl overflow-y-auto flex flex-col">
         
         <!-- Header -->
         <div class="px-6 py-4 border-b border-slate-800 flex items-center justify-between sticky top-0 bg-slate-900/90 backdrop-blur z-10">
@@ -40,7 +40,7 @@
             <!-- URL Input -->
             <div class="flex flex-col gap-2">
               <label class="text-sm font-semibold text-slate-400 uppercase tracking-wider">{{ t('downloader.url_placeholder') }}</label>
-              <div class="flex gap-2">
+              <div class="flex flex-col sm:flex-row gap-2">
                 <input 
                   v-model="inputUrl" 
                   type="text" 
@@ -52,7 +52,7 @@
                 <button 
                   @click="parseUrl" 
                   :disabled="isParsing || !inputUrl || isDownloading"
-                  class="px-5 py-3 bg-cyan-600 hover:bg-cyan-500 text-white rounded font-bold text-sm transition disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+                  class="px-5 py-3 bg-cyan-600 hover:bg-cyan-500 text-white rounded font-bold text-sm transition disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 shrink-0"
                 >
                   <span v-if="isParsing" class="animate-spin text-lg block w-4 h-4 rounded-full border-2 border-t-slate-100 border-slate-100/20"></span>
                   {{ t('downloader.parse_btn') }}
@@ -74,7 +74,7 @@
                 <option value="exhigh">{{ t('downloader.level_exhigh') }}</option>
                 <option value="lossless">{{ t('downloader.level_lossless') }}</option>
                 <option value="hires">{{ t('downloader.level_hires') }}</option>
-                <option value="jymaster">母带 (Master)</option>
+                <option value="jymaster">{{ t('downloader.quality_master') }}</option>
               </select>
             </div>
             
@@ -86,7 +86,7 @@
               </label>
               <textarea 
                 v-model="cookieData" 
-                placeholder="在此粘贴包含 MUSIC_U 一整大段的 Cookie 文本..." 
+                :placeholder="t('downloader.cookie_placeholder')" 
                 class="w-full h-16 bg-slate-800 border border-slate-700 rounded p-2 text-slate-300 text-xs focus:outline-none focus:border-indigo-600 font-mono resize-none shadow-inner"
                 @input="saveCookie"
               ></textarea>
@@ -95,13 +95,13 @@
 
           <!-- 解析结果面板 -->
           <div v-if="parsedData" class="flex flex-col gap-4 border border-slate-800 bg-slate-800/20 p-4 rounded-xl">
-             <div v-if="parsedData.type === 'song'" class="flex items-center gap-4">
-                <img v-if="parsedData.data[0].coverUrl" :src="parsedData.data[0].coverUrl" class="w-16 h-16 rounded shadow-lg object-cover" />
-                 <div class="flex-1 min-w-0">
+             <div v-if="parsedData.type === 'song'" class="flex flex-col sm:flex-row items-center sm:items-start gap-4">
+                <img v-if="parsedData.data[0].coverUrl" :src="parsedData.data[0].coverUrl" class="w-20 h-20 sm:w-16 sm:h-16 rounded shadow-lg object-cover" />
+                 <div class="flex-1 min-w-0 text-center sm:text-left">
                     <h3 class="text-slate-100 font-bold truncate">{{ parsedData.data[0].title }}</h3>
                     <p class="text-slate-400 text-sm truncate">{{ parsedData.data[0].artist }}</p>
                     <!-- Quality Badges -->
-                    <div v-if="parsedData.data[0].quality" class="flex gap-2 mt-2 items-center">
+                    <div v-if="parsedData.data[0].quality" class="flex flex-wrap gap-2 mt-2 items-center justify-center sm:justify-start">
                        <span v-if="parsedData.data[0].quality.bitrate > 2000 || parsedData.data[0].level === 'jymaster'" class="px-1.5 py-0.5 rounded-[4px] text-[9px] font-black bg-gradient-to-r from-amber-400 to-orange-500 text-black leading-none uppercase">Master</span>
                        <span v-else-if="parsedData.data[0].quality.mime.includes('flac')" class="px-1.5 py-0.5 rounded-[4px] text-[9px] font-black bg-indigo-500 text-white leading-none">FLAC</span>
                        <span v-else class="px-1.5 py-0.5 rounded-[4px] text-[9px] font-black bg-slate-700 text-slate-300 leading-none uppercase">{{ parsedData.data[0].quality.mime.split('/')[1] || 'MP3' }}</span>
@@ -109,7 +109,7 @@
                        <span class="text-[10px] text-slate-600 ml-1">{{ (parsedData.data[0].quality.size / 1024 / 1024).toFixed(2) }}MB</span>
                     </div>
                  </div>
-                 <div class="flex flex-col items-end gap-2">
+                 <div class="flex flex-col items-center sm:items-end gap-2">
                    <span v-if="parsedData.data[0].downloadable" class="px-2 py-0.5 rounded text-[10px] uppercase font-bold bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">{{ t('downloader.tag_downloadable') }}</span>
                    <span v-else class="px-2 py-0.5 rounded text-[10px] uppercase font-bold bg-rose-500/10 text-rose-400 border border-rose-500/20">{{ t('downloader.tag_restricted') }}</span>
                  </div>
@@ -251,7 +251,7 @@ const parseUrl = async () => {
 
 const downloadSingle = async (id: number | string): Promise<boolean> => {
     try {
-        addLog(`...正在请求直链并下载音频轨道 ID:${id} [${selectedLevel.value}]`);
+        addLog(t('downloader.log_downloading', { id, level: selectedLevel.value }));
         const endPoint = inputUrl.value.includes('qq.com') ? '/api/qq/download' : '/api/netease/download';
         const res = await axios.post(endPoint, { 
             id, 
@@ -259,10 +259,10 @@ const downloadSingle = async (id: number | string): Promise<boolean> => {
             cookie: cookieData.value
         });
         if (res.data.success) {
-            addLog(`✅ 刮削封装完成: ${res.data.filepath}`);
+            addLog(t('downloader.log_success', { path: res.data.filepath }));
             return true;
         } else {
-            addLog(`ERR: 下载故障 - ${res.data.error}`);
+            addLog(t('downloader.log_fail', { error: res.data.error }));
             return false;
         }
     } catch (e: any) {

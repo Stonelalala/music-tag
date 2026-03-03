@@ -3,15 +3,15 @@ export default {
     subtitle: 'NAS Batch Automation Edition',
     scan_btn: 'Scan NAS Directory',
     refresh_btn: 'Refresh Status',
-    db_total: 'Total Tracks in DB',
-    db_success: 'Successfully Tagged',
-    db_pending: 'Pending Scrape',
-    db_failed: 'Failed/Not Found',
+    db_total: 'Total',
+    db_success: 'Tagged',
+    db_pending: 'Pending',
+    db_failed: 'Failed',
     connecting: 'Connecting to Backend Monitor...',
     scraper_title: 'Automated Scraper Engine',
     scraper_desc: 'The scraper reads missing tracks from your SQLite queue and fetches data from public matching APIs (iTunes/NetEase) sequentially to avoid rate-limits. A nightly cron job executes this automatically.',
     scrape_btn: 'Force Start Batch Scrape',
-    settings_btn: 'Settings & APIs (Coming Soon)',
+    settings_btn: 'Settings & APIs',
     watched_dir: 'Watched Directory',
     msg_scan_ok: 'Background scan initiated! Watch the stats update.',
     msg_scan_fail: 'Failed to trigger scan.',
@@ -31,7 +31,7 @@ export default {
     // Player
     player_notplaying: 'Not Playing',
     player_lyrics_empty: 'No Lyrics',
-    player_lyrics_notfound: 'No local lyrics found',
+    player_lyrics_notfound: 'No synchronized lyrics found',
     play_now: 'Play Now',
 
     // Track List & Details
@@ -87,7 +87,9 @@ export default {
         log_refused: 'ERR: Service refused - {error}',
         log_interrupted: '🛑 User interrupted the queue!',
         log_preparing: '[{current}/{total}] Preparing ID:{id}',
-        log_finished: '🎉 Batch download completed! Results: Success [{success}] | Failed/Blocked [{failed}].'
+        log_finished: '🎉 Batch download completed! Results: Success [{success}] | Failed/Blocked [{failed}].',
+        cookie_placeholder: 'Paste Cookie text containing MUSIC_U section here...',
+        quality_master: 'Master'
     },
 
     ui: {
@@ -97,7 +99,9 @@ export default {
             back: 'Go Up',
             empty: '( empty )',
             organize: 'Organize Library',
-            dedupe: 'Find Duplicates'
+            dedupe: 'Find Duplicates',
+            library: 'Library',
+            folders: 'Folders'
         },
         tracks: {
             title: 'Music Library',
@@ -105,10 +109,28 @@ export default {
             rename_btn: 'Batch Rename',
             renaming: 'Renaming...',
             no_audio: 'No audio files in this folder',
+            no_audio_hint: 'Try selecting another folder or scanning again',
             confirm_rename_title: 'Batch Rename Files',
             confirm_rename_desc: 'This will rename all scraped files in this folder to the format Artist - Title.ext. Continue?',
             confirm_cancel: 'Cancel',
-            confirm_continue: 'Continue'
+            confirm_continue: 'Continue',
+            library_view: 'Library View',
+            playlist_title: 'Play Queue',
+            hi_res_library: 'Hi-Res Library',
+            sync_desc: 'Your collection of {count} tracks is synchronized via NAS.',
+            recently_scanned: 'Recently Scanned 24h ago',
+            overall_stats: 'Overall Stats',
+            live: 'LIVE',
+            synced_ok: 'Synced OK',
+            need_fix: 'Need Fix',
+            rescan_lib: 'Re-scan Library',
+            root: 'ROOT',
+            pro_dashboard: 'PRO DASHBOARD',
+            pro_plan: 'Pro Plan',
+            rename_success: 'Batch rename successful!',
+            matched: 'MATCHED',
+            error: 'ERROR',
+            pending: 'PENDING'
         },
         edit: {
             search_title: 'Online Metadata Search',
@@ -124,7 +146,11 @@ export default {
             search_hint: 'Enter search terms above to fetch metadata',
             apply_success: 'Metadata filled! Click "Save Changes" to write to file.',
             fetch_lyrics_btn: 'Fetch Lyrics Online',
-            upcoming_feature: 'Feature coming soon (Background Engine integration pending)'
+            upcoming_feature: 'Feature coming soon (Background Engine integration pending)',
+            id_lbl: 'ID',
+            unknown_lbl: 'UNKNOWN',
+            filename_lbl: 'Filename',
+            extension_lbl: 'Extension'
         },
         dedupe: {
             title: 'Smart Cleanup',
@@ -171,6 +197,18 @@ export default {
             valid_error: 'Please add at least one valid level',
             success_msg: 'Successfully moved and organized {count} files!',
             fail_msg: 'Organization failed: {error}'
+        },
+        settings: {
+            netease_cookie_label: 'NetEase Music Cookie (VIP)',
+            netease_cookie_hint: 'Used to unlock Lossless and Hi-Res downloads. Enter the full Cookie string containing MUSIC_U.',
+            qq_cookie_label: 'QQ Music Cookie (VIP)',
+            qq_cookie_hint: 'Used for high-quality QQ Music downloads. Currently Meting proxy is recommended.',
+            configured: 'Configured',
+            save_btn: 'Save Changes',
+            saving_btn: 'Saving...',
+            save_success: 'Settings saved (restart may be required)'
         }
-    }
+    },
+    col_size: 'Size',
+    player_lyrics_error: 'Error loading lyrics'
 };
