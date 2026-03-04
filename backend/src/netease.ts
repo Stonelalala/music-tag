@@ -214,7 +214,7 @@ export async function fetchNeteaseLyric(id: number | string) {
 
 export async function fetchFallbackFromMetingTencent(songName: string, singerName: string, level: string = 'exhigh'): Promise<string | null> {
     try {
-        const rawSinger = (singerName || '').split(/[,、&]+/)[0].trim();
+        const rawSinger = ((singerName || '').split(/[,、&]+/)[0] || '').trim();
         const keyword = encodeURIComponent(`${rawSinger} ${songName}`);
 
         // 尝试从 i-meto 检索 ID
@@ -242,7 +242,7 @@ export async function fetchFallbackFromMetingTencent(songName: string, singerNam
 
 export async function fetchFallbackFromBilibili(songName: string, singerName: string): Promise<string | null> {
     try {
-        const rawSinger = (singerName || '').split(/[,、&]+/)[0].trim();
+        const rawSinger = ((singerName || '').split(/[,、&]+/)[0] || '').trim();
         const keyword = encodeURIComponent(`${rawSinger} ${songName}`);
 
         const searchUrl = `https://api.i-meto.com/meting/api?server=bilibili&type=search&id=${keyword}`;
@@ -263,7 +263,7 @@ export async function fetchFallbackFromBilibili(songName: string, singerName: st
 
 export async function fetchFallbackFromKugou(songName: string, singerName: string): Promise<string | null> {
     try {
-        const rawSinger = (singerName || '').split(/[,、&]+/)[0].trim();
+        const rawSinger = ((singerName || '').split(/[,、&]+/)[0] || '').trim();
         const keyword = encodeURIComponent(`${rawSinger} ${songName}`);
         const searchUrl = `http://mobilecdn.kugou.com/api/v3/search/song?format=json&keyword=${keyword}&page=1&pagesize=1&showtype=1`;
         const searchRes = await axios.get(searchUrl, { timeout: 8000 });
