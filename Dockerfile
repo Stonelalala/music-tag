@@ -10,9 +10,9 @@ COPY frontend/ ./
 RUN npx vite build
 
 # ============================================
-# Stage 2: Install Backend Dependencies
+# Stage 2: Install Backend Dependencies & Compile TS
 # ============================================
-FROM node:20-alpine AS backend-deps
+FROM node:20-alpine AS backend-builder
 WORKDIR /app
 
 # Root-level dependencies
@@ -24,6 +24,11 @@ WORKDIR /app/backend
 COPY backend/package*.json ./
 RUN npm ci --no-audit --no-fund
 
+# Compile TypeScript -> JavaScript (eliminates tsx overhead in production)
+COPY backend/src/ ./src/
+COPY backend/tsconfig.json ./
+RUN npm run build
+
 # ============================================
 # Stage 3: Final Production Image
 # ============================================
@@ -34,14 +39,13 @@ WORKDIR /app
 RUN apk add --no-cache python3 make g++
 
 # Copy root node_modules
-COPY --from=backend-deps /app/node_modules ./node_modules
+COPY --from=backend-builder /app/node_modules ./node_modules
 COPY package*.json ./
 
-# Copy backend node_modules and source
-COPY --from=backend-deps /app/backend/node_modules ./backend/node_modules
+# Copy backend: compiled JS only (no tsx, no TypeScript compiler)
+COPY --from=backend-builder /app/backend/node_modules ./backend/node_modules
+COPY --from=backend-builder /app/backend/dist ./backend/dist
 COPY backend/package*.json ./backend/
-COPY backend/src/ ./backend/src/
-COPY backend/tsconfig.json ./backend/
 
 # Copy frontend build artifacts
 COPY --from=frontend-builder /app/frontend/dist ./frontend/dist
@@ -61,4 +65,5 @@ EXPOSE 8002
 HEALTHCHECK --interval=30s --timeout=10s --start-period=15s --retries=3 \
     CMD wget --no-verbose --tries=1 --spider http://localhost:8002/api/status || exit 1
 
-CMD ["npx", "--prefix", "backend", "tsx", "backend/src/index.ts"]
+# Run compiled JS with explicit heap size limit (forces V8 to GC more aggressively)
+CMD ["node", "--max-old-space-size=256", "backend/dist/index.js"]

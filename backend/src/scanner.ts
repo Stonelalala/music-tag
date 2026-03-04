@@ -20,7 +20,7 @@ export async function scanLibrary(musicDir: string) {
     `);
 
     const updateTechnicalMeta = db.prepare(`
-        UPDATE tracks SET size = @size, bitrate = @bitrate, sample_rate = @sample_rate, duration = @duration
+        UPDATE tracks SET size = @size
         WHERE filepath = @filepath
     `);
 
@@ -71,21 +71,18 @@ export async function scanLibrary(musicDir: string) {
                             console.error(`❌ [Scanner] Error parsing metadata for ${fullPath}: ${err.message}`);
                         }
                     } else {
-                        // For existing records, update technical metadata if it might be missing
+                        // For existing records, only update the file size (no-cost stat call).
+                        // Re-parsing audio metadata for every known file on every scan is
+                        // extremely expensive: music-metadata reads and allocates large Buffers
+                        // (including embedded cover art) for each file, causing memory spikes.
                         try {
                             const stats = fs.statSync(fullPath);
-                            const metadata = await mm.parseFile(fullPath);
-                            const format = metadata.format;
-
                             updateTechnicalMeta.run({
                                 size: stats.size,
-                                bitrate: format.bitrate || 0,
-                                sample_rate: format.sampleRate || 0,
-                                duration: format.duration || 0,
                                 filepath: fullPath
                             });
                         } catch (err) {
-                            // Silent skip if metadata parse fails for existing
+                            // Silent skip
                         }
                     }
                 }

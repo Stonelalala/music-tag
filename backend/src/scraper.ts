@@ -195,165 +195,192 @@ export async function searchQQMusic(query: string) {
     } catch (e: any) { return []; }
 }
 
+let isScraping = false;
 export async function processPendingTracks() {
-    console.log(`🚀 [Scraper] Starting to process pending tracks...`);
-
-    // Fetch up to 50 pending tracks to prevent API rate limits overload per cron tick
-    const pendingTracks = db.prepare('SELECT * FROM tracks WHERE scrape_status = 0 LIMIT 50').all() as any[];
-
-    if (pendingTracks.length === 0) {
-        console.log(`✅ [Scraper] No pending tracks to scrape.`);
+    if (isScraping) {
+        console.log(`⚠️ [Scraper] Scraping job is already running. Skipping.`);
         return;
     }
+    isScraping = true;
 
-    const updateStatus = db.prepare('UPDATE tracks SET scrape_status = ?, last_scraped_at = CURRENT_TIMESTAMP WHERE id = ?');
-    const updateMetadata = db.prepare(`
-        UPDATE tracks 
-        SET title = ?, artist = ?, album = ? 
-        WHERE id = ?
-    `);
+    try {
+        console.log(`🚀 [Scraper] Starting to process pending tracks...`);
 
-    for (const track of pendingTracks) {
-        // We need some initial query terms. If title is missing, fallback to filename.
-        const queryTitle = track.title || path.parse(track.filename).name;
-        // Sometimes the filename is "Artist - Title", let's try a very basic heuristic if artist is missing
-        let qTitle = queryTitle;
-        let qArtist = track.artist !== 'Unknown Artist' ? track.artist : '';
+        const updateStatus = db.prepare('UPDATE tracks SET scrape_status = ?, last_scraped_at = CURRENT_TIMESTAMP WHERE id = ?');
+        const updateMetadata = db.prepare(`
+            UPDATE tracks 
+            SET title = ?, artist = ?, album = ? 
+            WHERE id = ?
+        `);
 
-        if (!qArtist && qTitle.includes('-')) {
-            const parts = qTitle.split('-');
-            qArtist = parts[0].trim();
-            qTitle = parts[1].trim();
-        }
+        while (true) {
+            // Fetch up to 50 pending tracks per batch
+            const pendingTracks = db.prepare('SELECT * FROM tracks WHERE scrape_status = 0 LIMIT 50').all() as any[];
 
-        console.log(`🔍 [Scraper] Scraping: ${qTitle} by ${qArtist}`);
-
-        let metadata: any = await fetchMetadata(qTitle, qArtist);
-
-        if (metadata) {
-            console.log(`   --> Found match on iTunes: ${metadata.title} - ${metadata.album}`);
-        } else {
-            console.log(`   --> iTunes failed, trying NetEase Cloud Music (网易云音乐)...`);
-            metadata = await fetchNeteaseMetadata(qTitle, qArtist);
-            if (metadata) {
-                console.log(`   --> Found match on NetEase: ${metadata.title} - ${metadata.album}`);
-            } else {
-                console.log(`   --> NetEase failed, trying QQ Music (QQ音乐)...`);
-                metadata = await fetchQQMusicMetadata(qTitle, qArtist);
-                if (metadata) {
-                    console.log(`   --> Found match on QQ Music: ${metadata.title} - ${metadata.album}`);
-                }
-            }
-        }
-
-        if (metadata) {
-            let lyrics = await fetchLyrics(metadata.title, metadata.artist);
-
-            // Fallback lyrics retrieval chain
-            if (!lyrics && metadata.neteaseId) {
-                console.log(`   --> LRCLIB lyrics failed, trying NetEase lyrics...`);
-                lyrics = await fetchNeteaseLyrics(metadata.neteaseId);
-            }
-            if (!lyrics && metadata.qqSongMid) {
-                console.log(`   --> NetEase/LRCLIB lyrics failed or skipping, trying QQ Music lyrics...`);
-                lyrics = await fetchQQMusicLyrics(metadata.qqSongMid);
+            if (pendingTracks.length === 0) {
+                console.log(`✅ [Scraper] No pending tracks left to scrape.`);
+                break;
             }
 
-            let coverBuffer: Buffer | undefined;
-            let coverMime: string | undefined;
+            console.log(`⏳ [Scraper] Processing batch of ${pendingTracks.length} tracks...`);
 
-            if (metadata.coverUrl) {
+            for (const track of pendingTracks) {
+                // Declare coverBuffer at loop scope so we can explicitly release it at the end
+                let coverBuffer: Buffer | undefined;
+                let coverMime: string | undefined;
+
                 try {
-                    const imgRes = await axios.get(metadata.coverUrl, { responseType: 'arraybuffer' });
-                    coverBuffer = Buffer.from(imgRes.data, 'binary');
-                    coverMime = imgRes.headers['content-type'];
+                    // We need some initial query terms. If title is missing, fallback to filename.
+                    const queryTitle = track.title || path.parse(track.filename).name;
+                    // Sometimes the filename is "Artist - Title", let's try a very basic heuristic if artist is missing
+                    let qTitle = queryTitle;
+                    let qArtist = track.artist !== 'Unknown Artist' ? track.artist : '';
 
-                    // Save physical cover to disk with the same filename as the track
-                    const coverPath = path.join(path.dirname(track.filepath), `${path.parse(track.filepath).name}.jpg`);
-                    if (!fs.existsSync(coverPath)) {
-                        fs.writeFileSync(coverPath, coverBuffer);
-                        console.log(`   ✅ Saved physical cover to ${coverPath}`);
-                    }
-                } catch (imgErr) {
-                    console.error(`   --> Failed to download or save cover art.`);
-                }
-            }
-
-            try {
-                if (track.extension === '.mp3') {
-                    const id3Tags: NodeID3.Tags = {
-                        title: metadata.title,
-                        artist: metadata.artist,
-                        album: metadata.album,
-                        year: metadata.year,
-                        genre: metadata.genre
-                    };
-
-                    if (lyrics) {
-                        id3Tags.unsynchronisedLyrics = {
-                            language: 'eng',
-                            text: lyrics
-                        };
+                    if (!qArtist && qTitle.includes('-')) {
+                        const parts = qTitle.split('-');
+                        qArtist = parts[0].trim();
+                        qTitle = parts[1].trim();
                     }
 
-                    if (coverBuffer) {
-                        id3Tags.image = {
-                            mime: coverMime || 'image/jpeg',
-                            type: { id: 3, name: 'front cover' },
-                            description: 'Cover',
-                            imageBuffer: coverBuffer
-                        };
-                    }
+                    console.log(`🔍 [Scraper] Scraping: ${qTitle} by ${qArtist}`);
 
-                    const success = NodeID3.update(id3Tags, track.filepath);
-                    if (success) {
-                        console.log(`   ✅ Successfully wrote ID3 tags to ${track.filepath}`);
-                        updateMetadata.run(metadata.title, metadata.artist, metadata.album, track.id);
-                        updateStatus.run(1, track.id); // 1 = Success
+                    let metadata: any = await fetchMetadata(qTitle, qArtist);
+
+                    if (metadata) {
+                        console.log(`   --> Found match on iTunes: ${metadata.title} - ${metadata.album}`);
                     } else {
-                        console.log(`   ❌ Failed to write ID3 tags to ${track.filepath}`);
-                        updateStatus.run(2, track.id); // 2 = Failed
-                    }
-                } else if (track.extension === '.flac') {
-                    const Metaflac = require('metaflac-js');
-                    const flac = new Metaflac(track.filepath);
-
-                    if (metadata.title) { flac.removeTag('TITLE'); flac.setTag(`TITLE=${metadata.title}`); }
-                    if (metadata.artist) { flac.removeTag('ARTIST'); flac.setTag(`ARTIST=${metadata.artist}`); }
-                    if (metadata.album) { flac.removeTag('ALBUM'); flac.setTag(`ALBUM=${metadata.album}`); }
-                    if (metadata.year) { flac.removeTag('DATE'); flac.setTag(`DATE=${metadata.year}`); }
-                    if (metadata.genre) { flac.removeTag('GENRE'); flac.setTag(`GENRE=${metadata.genre}`); }
-                    if (lyrics) { flac.removeTag('LYRICS'); flac.setTag(`LYRICS=${lyrics}`); }
-
-                    if (coverBuffer) {
-                        try {
-                            flac.importPictureFromBuffer(coverBuffer);
-                        } catch (e) {
-                            console.error(`   ⚠️ Failed to set FLAC cover:`, e);
+                        console.log(`   --> iTunes failed, trying NetEase Cloud Music (网易云音乐)...`);
+                        metadata = await fetchNeteaseMetadata(qTitle, qArtist);
+                        if (metadata) {
+                            console.log(`   --> Found match on NetEase: ${metadata.title} - ${metadata.album}`);
+                        } else {
+                            console.log(`   --> NetEase failed, trying QQ Music (QQ音乐)...`);
+                            metadata = await fetchQQMusicMetadata(qTitle, qArtist);
+                            if (metadata) {
+                                console.log(`   --> Found match on QQ Music: ${metadata.title} - ${metadata.album}`);
+                            }
                         }
                     }
 
-                    flac.save();
-                    console.log(`   ✅ Successfully wrote FLAC tags to ${track.filepath}`);
-                    updateMetadata.run(metadata.title, metadata.artist, metadata.album, track.id);
-                    updateStatus.run(1, track.id); // 1 = Success
-                } else {
-                    console.log(`   ⚠️ Skipping write, extension ${track.extension} is not supported. Marked as ignored.`);
-                    updateStatus.run(3, track.id); // 3 = Ignored
+                    if (metadata) {
+                        let lyrics = await fetchLyrics(metadata.title, metadata.artist);
+
+                        // Fallback lyrics retrieval chain
+                        if (!lyrics && metadata.neteaseId) {
+                            console.log(`   --> LRCLIB lyrics failed, trying NetEase lyrics...`);
+                            lyrics = await fetchNeteaseLyrics(metadata.neteaseId);
+                        }
+                        if (!lyrics && metadata.qqSongMid) {
+                            console.log(`   --> NetEase/LRCLIB lyrics failed or skipping, trying QQ Music lyrics...`);
+                            lyrics = await fetchQQMusicLyrics(metadata.qqSongMid);
+                        }
+
+                        coverBuffer = undefined;
+                        coverMime = undefined;
+
+                        if (metadata.coverUrl) {
+                            try {
+                                const imgRes = await axios.get(metadata.coverUrl, { responseType: 'arraybuffer' });
+                                coverBuffer = Buffer.from(imgRes.data, 'binary');
+                                coverMime = imgRes.headers['content-type'];
+
+                                // Save physical cover to disk with the same filename as the track
+                                const coverPath = path.join(path.dirname(track.filepath), `${path.parse(track.filepath).name}.jpg`);
+                                if (!fs.existsSync(coverPath)) {
+                                    fs.writeFileSync(coverPath, coverBuffer);
+                                    console.log(`   ✅ Saved physical cover to ${coverPath}`);
+                                }
+                            } catch (imgErr) {
+                                console.error(`   --> Failed to download or save cover art.`);
+                            }
+                        }
+
+                        try {
+                            if (track.extension === '.mp3') {
+                                const id3Tags: NodeID3.Tags = {
+                                    title: metadata.title,
+                                    artist: metadata.artist,
+                                    album: metadata.album,
+                                    year: metadata.year,
+                                    genre: metadata.genre
+                                };
+
+                                if (lyrics) {
+                                    id3Tags.unsynchronisedLyrics = {
+                                        language: 'eng',
+                                        text: lyrics
+                                    };
+                                }
+
+                                if (coverBuffer) {
+                                    id3Tags.image = {
+                                        mime: coverMime || 'image/jpeg',
+                                        type: { id: 3, name: 'front cover' },
+                                        description: 'Cover',
+                                        imageBuffer: coverBuffer
+                                    };
+                                }
+
+                                const success = NodeID3.update(id3Tags, track.filepath);
+                                if (success) {
+                                    console.log(`   ✅ Successfully wrote ID3 tags to ${track.filepath}`);
+                                    updateMetadata.run(metadata.title, metadata.artist, metadata.album, track.id);
+                                    updateStatus.run(1, track.id); // 1 = Success
+                                } else {
+                                    console.log(`   ❌ Failed to write ID3 tags to ${track.filepath}`);
+                                    updateStatus.run(2, track.id); // 2 = Failed
+                                }
+                            } else if (track.extension === '.flac') {
+                                const Metaflac = require('metaflac-js');
+                                const flac = new Metaflac(track.filepath);
+
+                                if (metadata.title) { flac.removeTag('TITLE'); flac.setTag(`TITLE=${metadata.title}`); }
+                                if (metadata.artist) { flac.removeTag('ARTIST'); flac.setTag(`ARTIST=${metadata.artist}`); }
+                                if (metadata.album) { flac.removeTag('ALBUM'); flac.setTag(`ALBUM=${metadata.album}`); }
+                                if (metadata.year) { flac.removeTag('DATE'); flac.setTag(`DATE=${metadata.year}`); }
+                                if (metadata.genre) { flac.removeTag('GENRE'); flac.setTag(`GENRE=${metadata.genre}`); }
+                                if (lyrics) { flac.removeTag('LYRICS'); flac.setTag(`LYRICS=${lyrics}`); }
+
+                                if (coverBuffer) {
+                                    try {
+                                        flac.importPictureFromBuffer(coverBuffer);
+                                    } catch (e) {
+                                        console.error(`   ⚠️ Failed to set FLAC cover:`, e);
+                                    }
+                                }
+
+                                flac.save();
+                                console.log(`   ✅ Successfully wrote FLAC tags to ${track.filepath}`);
+                                updateMetadata.run(metadata.title, metadata.artist, metadata.album, track.id);
+                                updateStatus.run(1, track.id); // 1 = Success
+                            } else {
+                                console.log(`   ⚠️ Skipping write, extension ${track.extension} is not supported. Marked as ignored.`);
+                                updateStatus.run(3, track.id); // 3 = Ignored
+                            }
+                        } catch (err: any) {
+                            console.error(`   ❌ Critical error writing tags: ${err.message}`);
+                            updateStatus.run(2, track.id); // Failed
+                        }
+
+                    } else {
+                        console.log(`   ❌ No metadata found for ${qTitle}`);
+                        updateStatus.run(2, track.id); // Failed
+                    }
+                } catch (trackErr: any) {
+                    console.error(`   ❌ Unhandled error processing track ${track.filename}: ${trackErr.message}`);
+                    updateStatus.run(2, track.id); // Failed
                 }
-            } catch (err: any) {
-                console.error(`   ❌ Critical error writing tags: ${err.message}`);
-                updateStatus.run(2, track.id); // Failed
+
+                // Explicitly release cover buffer to help GC reclaim memory between tracks
+                // (each cover image is ~200-600 KB; 50 concurrent tracks = up to 30 MB trapped)
+                coverBuffer = undefined;
+
+                // Wait 1 second between requests to avoid getting IP banned by LRCLIB or Apple
+                await new Promise(resolve => setTimeout(resolve, 1000));
             }
-
-        } else {
-            console.log(`   ❌ No metadata found for ${qTitle}`);
-            updateStatus.run(2, track.id); // Failed
         }
-
-        // Wait 1 second between requests to avoid getting IP banned by LRCLIB or Apple
-        await new Promise(resolve => setTimeout(resolve, 1000));
+        console.log(`🎉 [Scraper] All batch processing complete.`);
+    } finally {
+        isScraping = false;
     }
-
-    console.log(`🎉 [Scraper] Batch processing complete.`);
 }
