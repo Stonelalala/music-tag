@@ -437,7 +437,9 @@ app.get('/api/tracks/:id/stream', (req, res) => {
     try {
         const id = req.params.id;
         const track = db.prepare('SELECT filepath, extension FROM tracks WHERE id = ?').get(id) as any;
+        console.log(`[Stream] Request for track ID: ${id}, filepath: ${track?.filepath}`);
         if (!track || !fs.existsSync(track.filepath)) {
+            console.error(`[Stream] File not found: ${track?.filepath}`);
             return res.status(404).json({ success: false, error: 'Track not found' });
         }
 
@@ -1006,8 +1008,8 @@ app.post('/api/tasks/cleanup', (req, res) => {
     }
 });
 
-app.listen(PORT, () => {
-    console.log(`🚀 Music Tag Auto-Scraper API running on port ${PORT}`);
+app.listen(Number(PORT), '0.0.0.0', () => {
+    console.log(`🚀 Music Tag Auto-Scraper API running on http://0.0.0.0:${PORT}`);
     console.log(`📂 Music Directory watched: ${MUSIC_DIR}`);
     console.log(`🗄️ Database Directory: ${dataDir}`);
     console.log(`⏳ Auto-Scrape Schedule: ${CRON_SCHEDULE}`);
