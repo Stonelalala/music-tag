@@ -116,7 +116,7 @@ const confirm = async () => {
             baseDir: baseDir.value
         });
         if (res.data.success) {
-            showToast(t('ui.organize.success_msg', { count: res.data.count }));
+            showToast(t('msg_task_started'));
             emit('organized');
             close();
         }

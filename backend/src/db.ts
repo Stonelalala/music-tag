@@ -43,6 +43,22 @@ db.exec(`
     password TEXT NOT NULL,
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP
   );
+
+  CREATE TABLE IF NOT EXISTS tasks (
+    id TEXT PRIMARY KEY,
+    type TEXT NOT NULL,
+    status TEXT NOT NULL,
+    progress INTEGER DEFAULT 0,
+    message TEXT,
+    payload TEXT,
+    result TEXT,
+    logs TEXT,
+    parent_id TEXT REFERENCES tasks(id) ON DELETE CASCADE,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+  );
+  
+  CREATE INDEX IF NOT EXISTS idx_tasks_parent ON tasks(parent_id);
   
   CREATE INDEX IF NOT EXISTS idx_tracks_filepath ON tracks(filepath);
   CREATE INDEX IF NOT EXISTS idx_tracks_status ON tracks(scrape_status);
@@ -65,5 +81,7 @@ try { db.exec("ALTER TABLE tracks ADD COLUMN bitrate INTEGER;"); } catch (e) { }
 try { db.exec("ALTER TABLE tracks ADD COLUMN sample_rate INTEGER;"); } catch (e) { }
 try { db.exec("ALTER TABLE tracks ADD COLUMN duration REAL;"); } catch (e) { }
 try { db.exec("ALTER TABLE tracks ADD COLUMN size INTEGER;"); } catch (e) { }
+try { db.exec("ALTER TABLE tasks ADD COLUMN parent_id TEXT REFERENCES tasks(id) ON DELETE CASCADE;"); } catch (e) { }
+try { db.exec("CREATE INDEX IF NOT EXISTS idx_tasks_parent ON tasks(parent_id);"); } catch (e) { }
 
 console.log('✅ SQLite Database initialized at:', dbPath);

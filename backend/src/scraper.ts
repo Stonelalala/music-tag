@@ -195,16 +195,40 @@ export async function searchQQMusic(query: string) {
     } catch (e: any) { return []; }
 }
 
+import { taskManager } from './taskManager';
+
 let isScraping = false;
-export async function processPendingTracks() {
+export async function processPendingTracks(taskId?: string) {
     if (isScraping) {
         console.log(`⚠️ [Scraper] Scraping job is already running. Skipping.`);
+        if (taskId) {
+            taskManager.updateTask(taskId, { status: 'failed', message: 'Another scraping job is already running.' });
+        }
         return;
     }
     isScraping = true;
 
+    const log = (msg: string) => {
+        if (taskId) {
+            taskManager.addLog(taskId, msg);
+        } else {
+            console.log(msg);
+        }
+    }
+
     try {
-        console.log(`🚀 [Scraper] Starting to process pending tracks...`);
+        log(`🚀 [Scraper] Starting to process pending tracks...`);
+        if (taskId) taskManager.updateTask(taskId, { status: 'running', progress: 0 });
+
+        const totalPending = db.prepare('SELECT COUNT(*) as count FROM tracks WHERE scrape_status = 0').get() as { count: number };
+        let processedCount = 0;
+        const totalToProcess = totalPending.count;
+
+        if (totalToProcess === 0) {
+            log(`✅ [Scraper] No pending tracks left to scrape.`);
+            if (taskId) taskManager.updateTask(taskId, { status: 'completed', progress: 100, message: 'No pending tracks found.' });
+            return;
+        }
 
         const updateStatus = db.prepare('UPDATE tracks SET scrape_status = ?, last_scraped_at = CURRENT_TIMESTAMP WHERE id = ?');
         const updateMetadata = db.prepare(`
@@ -242,22 +266,22 @@ export async function processPendingTracks() {
                         qTitle = parts[1].trim();
                     }
 
-                    console.log(`🔍 [Scraper] Scraping: ${qTitle} by ${qArtist}`);
+                    log(`🔍 [Scraper] Scraping: ${qTitle} by ${qArtist}`);
 
-                    let metadata: any = await fetchMetadata(qTitle, qArtist);
+                    let metadata: any = await fetchNeteaseMetadata(qTitle, qArtist);
 
                     if (metadata) {
-                        console.log(`   --> Found match on iTunes: ${metadata.title} - ${metadata.album}`);
+                        log(`   --> Found match on NetEase: ${metadata.title} - ${metadata.album}`);
                     } else {
-                        console.log(`   --> iTunes failed, trying NetEase Cloud Music (网易云音乐)...`);
-                        metadata = await fetchNeteaseMetadata(qTitle, qArtist);
+                        log(`   --> NetEase failed, trying QQ Music...`);
+                        metadata = await fetchQQMusicMetadata(qTitle, qArtist);
                         if (metadata) {
-                            console.log(`   --> Found match on NetEase: ${metadata.title} - ${metadata.album}`);
+                            log(`   --> Found match on QQ Music: ${metadata.title} - ${metadata.album}`);
                         } else {
-                            console.log(`   --> NetEase failed, trying QQ Music (QQ音乐)...`);
-                            metadata = await fetchQQMusicMetadata(qTitle, qArtist);
+                            log(`   --> QQ Music failed, trying iTunes...`);
+                            metadata = await fetchMetadata(qTitle, qArtist);
                             if (metadata) {
-                                console.log(`   --> Found match on QQ Music: ${metadata.title} - ${metadata.album}`);
+                                log(`   --> Found match on iTunes: ${metadata.title} - ${metadata.album}`);
                             }
                         }
                     }
@@ -267,11 +291,11 @@ export async function processPendingTracks() {
 
                         // Fallback lyrics retrieval chain
                         if (!lyrics && metadata.neteaseId) {
-                            console.log(`   --> LRCLIB lyrics failed, trying NetEase lyrics...`);
+                            log(`   --> LRCLIB lyrics failed, trying NetEase lyrics...`);
                             lyrics = await fetchNeteaseLyrics(metadata.neteaseId);
                         }
                         if (!lyrics && metadata.qqSongMid) {
-                            console.log(`   --> NetEase/LRCLIB lyrics failed or skipping, trying QQ Music lyrics...`);
+                            log(`   --> NetEase/LRCLIB lyrics failed, trying QQ Music lyrics...`);
                             lyrics = await fetchQQMusicLyrics(metadata.qqSongMid);
                         }
 
@@ -377,9 +401,25 @@ export async function processPendingTracks() {
 
                 // Wait 1 second between requests to avoid getting IP banned by LRCLIB or Apple
                 await new Promise(resolve => setTimeout(resolve, 1000));
+
+                processedCount++;
+                if (taskId) {
+                    const progress = Math.round((processedCount / totalToProcess) * 100);
+                    taskManager.updateTask(taskId, { progress, message: `Scraping... ${processedCount}/${totalToProcess}` });
+                }
             }
         }
-        console.log(`🎉 [Scraper] All batch processing complete.`);
+        log(`🎉 [Scraper] All batch processing complete.`);
+        if (taskId) {
+            taskManager.updateTask(taskId, {
+                status: 'completed',
+                progress: 100,
+                message: `Scraping complete. Processed ${processedCount} tracks.`
+            });
+        }
+    } catch (e: any) {
+        log(`❌ [Scraper] Critical error in scraping job: ${e.message}`);
+        if (taskId) taskManager.updateTask(taskId, { status: 'failed', message: e.message });
     } finally {
         isScraping = false;
     }

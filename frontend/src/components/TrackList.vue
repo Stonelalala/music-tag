@@ -1,55 +1,10 @@
 <template>
-  <div class="flex-1 flex flex-col min-w-0 bg-app-primary overflow-auto custom-scrollbar p-4 md:p-6 space-y-6">
+  <div class="flex-1 flex flex-col min-w-0 bg-app-primary overflow-auto custom-scrollbar p-3 md:p-4 space-y-4">
       
-      <!-- Bento Header Grid -->
-      <div class="grid grid-cols-1 lg:grid-cols-3 gap-6 shrink-0">
-        <!-- Main Info Card -->
-        <div class="lg:col-span-2 bento-card p-8 flex flex-col justify-between relative overflow-hidden group">
-            <div class="absolute -right-10 -top-10 w-40 h-40 bg-app-accent/10 rounded-full blur-3xl group-hover:bg-app-accent/20 transition-colors"></div>
-            <div class="relative z-10">
-                <h1 class="text-3xl md:text-4xl font-black text-app-primary tracking-tighter mb-4">{{ t('ui.tracks.hi_res_library') }}</h1>
-                <p class="text-app-secondary text-sm max-w-md leading-relaxed">
-                    {{ t('ui.tracks.sync_desc', { count: status?.dbStatus.total || 0 }) }}
-                </p>
-            </div>
-            <div class="flex items-center gap-3 mt-8">
-                <div class="flex -space-x-3">
-                    <div v-for="i in 3" :key="i" class="w-10 h-10 rounded-full border-2 border-app bg-app-muted flex items-center justify-center text-[10px] font-bold overflow-hidden shadow-lg">
-                        <img v-if="tracks[i-1]" :src="`/api/tracks/${tracks[i-1].id}/cover${token ? '?auth=' + token : ''}`" class="w-full h-full object-cover" />
-                        <span v-else>?</span>
-                    </div>
-                </div>
-                <span class="text-[10px] font-bold text-app-muted uppercase tracking-widest ml-2">{{ t('ui.tracks.recently_scanned') }}</span>
-            </div>
-        </div>
 
-        <!-- Status & Actions Card -->
-        <div class="bento-card p-6 flex flex-col h-full justify-between">
-            <div class="flex justify-between items-start">
-                <span class="text-[10px] font-black uppercase tracking-[0.2em] text-app-muted">{{ t('ui.tracks.overall_stats') }}</span>
-                <span class="px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-500 text-[8px] font-black uppercase flex items-center gap-1">
-                    <span class="w-1 h-1 rounded-full bg-emerald-500 animate-pulse"></span> {{ t('ui.tracks.live') }}
-                </span>
-            </div>
-            <div class="space-y-4 mt-4">
-                <div class="flex justify-between items-end border-b border-app/30 pb-2">
-                    <span class="text-xs text-app-secondary font-medium">{{ t('ui.tracks.synced_ok') }}</span>
-                    <span class="text-xl font-black text-emerald-500">{{ status?.dbStatus.success || 0 }}</span>
-                </div>
-                <div class="flex justify-between items-end">
-                    <span class="text-xs text-app-secondary font-medium">{{ t('ui.tracks.need_fix') }}</span>
-                    <span class="text-xl font-black text-rose-500">{{ status?.dbStatus.failed || 0 }}</span>
-                </div>
-            </div>
-            <button @click="emit('refresh')" class="mt-6 w-full py-2.5 bg-app-muted hover:bg-app-accent hover:text-white rounded-xl text-xs font-bold text-app-primary flex items-center justify-center gap-2 transition-all active:scale-[0.98] border border-app shadow-sm">
-                <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" class="opacity-60"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/></svg>
-                {{ t('ui.tracks.rescan_lib') }}
-            </button>
-        </div>
-      </div>
 
       <!-- Main Table Card -->
-      <div class="bento-card flex-1 flex flex-col min-h-[500px] overflow-hidden">
+      <div class="flex-1 flex flex-col min-h-[500px] overflow-hidden">
         <!-- Table Header Toolbar -->
         <div class="px-6 py-4 border-app border-b flex items-center justify-between bg-app-secondary/30">
             <!-- Explorer Breadcrumb -->
@@ -101,12 +56,12 @@
                 </tr>
               </thead>
               <tbody class="divide-y divide-app/10">
-                <tr v-for="(track, index) in tracks" :key="track.id" @click="emit('play', track, tracks)" class="hover:bg-app-accent/5 transition-all duration-300 group cursor-pointer border-b border-app/5 last:border-0">
-                  <td class="px-6 py-5 font-mono text-[10px] text-app-muted text-center group-hover:text-app-accent transition-colors">{{ index + 1 }}</td>
+                <tr v-for="(track, index) in paginatedTracks" :key="track.id" @click="emit('play', track, tracks)" class="hover:bg-app-accent/5 transition-all duration-300 group cursor-pointer border-b border-app/5 last:border-0">
+                  <td class="px-6 py-5 font-mono text-[10px] text-app-muted text-center group-hover:text-app-accent transition-colors">{{ (currentPage - 1) * itemsPerPage + index + 1 }}</td>
                   <td class="px-3 py-3">
                       <div class="flex items-center gap-4">
                           <div class="w-14 h-14 bg-app-muted rounded-xl overflow-hidden flex-shrink-0 border border-app shadow-2xl group-hover:scale-105 transition-transform relative">
-                              <img :src="`/api/tracks/${track.id}/cover${token ? '?auth=' + token : ''}`" @error="onImageError" class="w-full h-full object-cover" />
+                              <img loading="lazy" :src="`/api/tracks/${track.id}/cover${token ? '?auth=' + token : ''}`" @error="onImageError" class="w-full h-full object-cover" />
                               <div class="absolute inset-0 bg-app-accent/20 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
                                   <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="currentColor" class="text-white"><polygon points="5 3 19 12 5 21 5 3"/></svg>
                               </div>
@@ -144,6 +99,29 @@
                 </tr>
               </tbody>
             </table>
+            
+            <!-- Pagination Controls -->
+            <div v-if="totalPages > 1" class="px-6 py-4 flex items-center justify-between border-t border-app bg-app-primary/50 sticky bottom-0 backdrop-blur-md z-10">
+                <span class="text-[11px] text-app-muted font-bold tracking-widest uppercase">
+                    Page {{ currentPage }} / {{ totalPages }} (Total {{ tracks.length }})
+                </span>
+                <div class="flex items-center gap-2">
+                    <button 
+                        @click="currentPage--" 
+                        :disabled="currentPage === 1"
+                        class="px-3 py-1.5 rounded-lg bg-app-muted/50 hover:bg-app-accent hover:text-white border border-app text-xs font-bold transition-colors disabled:opacity-30 disabled:pointer-events-none"
+                    >
+                        Prev
+                    </button>
+                    <button 
+                        @click="currentPage++" 
+                        :disabled="currentPage === totalPages"
+                        class="px-3 py-1.5 rounded-lg bg-app-muted/50 hover:bg-app-accent hover:text-white border border-app text-xs font-bold transition-colors disabled:opacity-30 disabled:pointer-events-none"
+                    >
+                        Next
+                    </button>
+                </div>
+            </div>
             
             <!-- Empty State -->
             <div v-if="tracks.length === 0" class="py-32 text-center flex flex-col items-center gap-6">
@@ -186,7 +164,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref } from 'vue';
+import { ref, computed, watch } from 'vue';
 import { useI18n } from 'vue-i18n';
 import axios from 'axios';
 import OrganizeModal from './OrganizeModal.vue';
@@ -211,6 +189,23 @@ const isOrganizeModalOpen = ref(false);
 const isDeduplicateModalOpen = ref(false);
 const isConfirmOpen = ref(false);
 
+// Pagination logic
+const currentPage = ref(1);
+const itemsPerPage = 50;
+
+// Reset page when switching folder 
+watch(() => props.currentFolder, () => {
+    currentPage.value = 1;
+});
+
+// Since we fetch the whole folder, perform frontend pagination for performance constraints
+const totalPages = computed(() => Math.ceil(props.tracks.length / itemsPerPage));
+
+const paginatedTracks = computed(() => {
+    const start = (currentPage.value - 1) * itemsPerPage;
+    return props.tracks.slice(start, start + itemsPerPage);
+});
+
 const formatSize = (bytes: number) => {
     if (!bytes) return '-';
     const k = 1024;
@@ -234,19 +229,16 @@ const promptBatchRename = () => {
 
 const executeBatchRename = async () => {
     isConfirmOpen.value = false;
-    renaming.value = true;
     try {
         const res = await axios.post('/api/batch-rename', {
             folder: props.currentFolder
         });
         if (res.data.success) {
-            showToast(t('ui.tracks.rename_success'));
+            showToast(t('msg_task_started')); // Task started
             emit('refresh');
         }
     } catch (e: any) {
         showToast(e.response?.data?.error || t('msg_save_fail'));
-    } finally {
-        renaming.value = false;
     }
 };
 </script>

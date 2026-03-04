@@ -1,11 +1,11 @@
 <template>
-  <div class="flex-1 flex flex-col min-w-0 bg-app-primary overflow-auto custom-scrollbar p-2 sm:p-4 md:p-6 space-y-4 md:space-y-6">
+  <div class="flex-1 flex flex-col min-w-0 bg-app-primary overflow-auto custom-scrollbar">
 
-    <!-- Bento Card Wrapper -->
-    <div class="bento-card flex-1 flex flex-col overflow-hidden">
+    <!-- Full-bleed Content Container -->
+    <div class="flex-1 flex flex-col overflow-hidden">
 
       <!-- Header / Tab Bar (inside card) -->
-      <div class="flex flex-wrap items-center justify-between gap-3 px-4 py-3 md:px-6 md:py-4 border-b border-app bg-app-secondary/30">
+      <div class="flex flex-wrap items-center justify-between gap-3 px-4 py-3 md:px-6 md:py-4 border-b border-app bg-app-secondary/30 shrink-0">
         <div class="flex items-center gap-3 md:gap-6">
           <h2 class="text-base md:text-xl font-black text-app-primary flex items-center gap-2 tracking-tighter whitespace-nowrap">
             <div class="w-7 h-7 md:w-8 md:h-8 rounded-full bg-rose-500 flex items-center justify-center shadow-lg shadow-rose-500/20 shrink-0">
@@ -216,7 +216,7 @@
       leave-from-class="translate-y-0 opacity-100"
       leave-to-class="translate-y-full opacity-0"
     >
-      <div v-if="selectedPlaylist" class="fixed inset-0 z-[110] p-2 sm:p-4 md:p-10 flex items-end sm:items-center justify-center bg-black/60 backdrop-blur-sm" @click.self="selectedPlaylist = null">
+      <div v-if="selectedPlaylist" class="fixed inset-0 z-[90] p-2 sm:p-4 md:p-10 flex items-end sm:items-center justify-center bg-black/60 backdrop-blur-sm" @click.self="selectedPlaylist = null">
         <div class="bg-app-primary border border-app w-full max-w-4xl h-[92vh] sm:h-[85vh] rounded-t-2xl sm:rounded-2xl md:rounded-3xl shadow-2xl flex flex-col overflow-hidden">
            <!-- Detail Header -->
            <div class="relative h-44 sm:h-56 md:h-72 shrink-0 overflow-hidden">

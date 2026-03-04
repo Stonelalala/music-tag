@@ -98,11 +98,14 @@ app.get('/api/status', (req, res) => {
     }
 });
 
+import { taskManager } from './taskManager';
+
 app.post('/api/trigger-scan', async (req, res) => {
     try {
+        const taskId = taskManager.createTask('scan', 'Library scan triggered');
         // Do not block response for full scan
-        scanLibrary(MUSIC_DIR).catch(err => console.error("Scan error:", err));
-        res.json({ success: true, message: 'Scan job triggered in background.' });
+        scanLibrary(MUSIC_DIR, taskId).catch(err => console.error("Scan error:", err));
+        res.json({ success: true, taskId, message: 'Scan job triggered in background.' });
     } catch (e: any) {
         res.status(500).json({ success: false, error: e.message });
     }
@@ -110,9 +113,19 @@ app.post('/api/trigger-scan', async (req, res) => {
 
 app.post('/api/trigger-scrape', async (req, res) => {
     try {
+        const taskId = taskManager.createTask('scrape', 'Batch scraping triggered');
         // Do not block response for scrape job
-        processPendingTracks().catch(err => console.error("Scraper error:", err));
-        res.json({ success: true, message: 'Scrape batch job triggered in background.' });
+        processPendingTracks(taskId).catch(err => console.error("Scraper error:", err));
+        res.json({ success: true, taskId, message: 'Scrape batch job triggered in background.' });
+    } catch (e: any) {
+        res.status(500).json({ success: false, error: e.message });
+    }
+});
+
+app.post('/api/reset-scrape-status', (req, res) => {
+    try {
+        const result = db.prepare('UPDATE tracks SET scrape_status = 0 WHERE scrape_status = 1').run();
+        res.json({ success: true, count: result.changes });
     } catch (e: any) {
         res.status(500).json({ success: false, error: e.message });
     }
@@ -192,46 +205,62 @@ app.get('/api/tracks', (req, res) => {
 app.post('/api/tracks/organize', (req, res) => {
     try {
         const { levels } = req.body;
+        const taskId = taskManager.createTask('organize', 'Library organization triggered', { levels });
 
-        const allTracks = db.prepare(`SELECT * FROM tracks ORDER BY filepath ASC`).all() as any[];
-        let organizedCount = 0;
+        (async () => {
+            try {
+                taskManager.updateTask(taskId, { status: 'running', progress: 10 });
+                const allTracks = db.prepare(`SELECT * FROM tracks ORDER BY filepath ASC`).all() as any[];
+                let organizedCount = 0;
+                const total = allTracks.length;
 
-        db.transaction(() => {
-            Object.values(allTracks).forEach(track => {
-                const dirParts = [];
-                for (const level of levels || []) {
-                    if (level === 'artist') {
-                        dirParts.push(track.artist ? track.artist.replace(/[<>:"/\\|?*]+/g, '_').trim() : 'Unknown Artist');
-                    } else if (level === 'album') {
-                        dirParts.push(track.album ? track.album.replace(/[<>:"/\\|?*]+/g, '_').trim() : 'Unknown Album');
-                    } else if (level === 'title') {
-                        dirParts.push(track.title ? track.title.replace(/[<>:"/\\|?*]+/g, '_').trim() : 'Unknown Title');
-                    } else if (level.startsWith('custom:')) {
-                        dirParts.push(level.substring(7).replace(/[<>:"/\\|?*]+/g, '_').trim());
-                    }
-                }
+                db.transaction(() => {
+                    allTracks.forEach((track, index) => {
+                        const dirParts = [];
+                        for (const level of levels || []) {
+                            if (level === 'artist') {
+                                dirParts.push(track.artist ? track.artist.replace(/[<>:"/\\|?*]+/g, '_').trim() : 'Unknown Artist');
+                            } else if (level === 'album') {
+                                dirParts.push(track.album ? track.album.replace(/[<>:"/\\|?*]+/g, '_').trim() : 'Unknown Album');
+                            } else if (level === 'title') {
+                                dirParts.push(track.title ? track.title.replace(/[<>:"/\\|?*]+/g, '_').trim() : 'Unknown Title');
+                            } else if (level.startsWith('custom:')) {
+                                dirParts.push(level.substring(7).replace(/[<>:"/\\|?*]+/g, '_').trim());
+                            }
+                        }
 
-                if (dirParts.length === 0) return;
+                        if (dirParts.length === 0) return;
 
-                const newDir = path.join(MUSIC_DIR, ...dirParts);
-                const newFilepath = path.join(newDir, track.filename);
+                        const newDir = path.join(MUSIC_DIR, ...dirParts);
+                        const newFilepath = path.join(newDir, track.filename);
 
-                if (track.filepath !== newFilepath && fs.existsSync(track.filepath)) {
-                    if (!fs.existsSync(newDir)) {
-                        fs.mkdirSync(newDir, { recursive: true });
-                    }
-                    try {
-                        fs.renameSync(track.filepath, newFilepath);
-                        db.prepare('UPDATE tracks SET filepath = ? WHERE id = ?').run(newFilepath, track.id);
-                        organizedCount++;
-                    } catch (e) {
-                        console.error(`Failed to move ${track.filepath}:`, e);
-                    }
-                }
-            });
+                        if (track.filepath !== newFilepath && fs.existsSync(track.filepath)) {
+                            if (!fs.existsSync(newDir)) {
+                                fs.mkdirSync(newDir, { recursive: true });
+                            }
+                            try {
+                                fs.renameSync(track.filepath, newFilepath);
+                                db.prepare('UPDATE tracks SET filepath = ? WHERE id = ?').run(newFilepath, track.id);
+                                organizedCount++;
+                                if (organizedCount % 50 === 0) {
+                                    taskManager.updateTask(taskId, {
+                                        progress: Math.round((index / total) * 100),
+                                        message: `Moving files... ${organizedCount} items moved`
+                                    });
+                                }
+                            } catch (e) {
+                                taskManager.addLog(taskId, `Failed to move ${track.filepath}: ${e}`);
+                            }
+                        }
+                    });
+                })();
+                taskManager.updateTask(taskId, { status: 'completed', progress: 100, message: `Successfully organized ${organizedCount} files.` });
+            } catch (err: any) {
+                taskManager.updateTask(taskId, { status: 'failed', message: err.message });
+            }
         })();
 
-        res.json({ success: true, count: organizedCount });
+        res.json({ success: true, taskId });
     } catch (e: any) {
         res.status(500).json({ success: false, error: e.message });
     }
@@ -319,43 +348,51 @@ app.get('/api/tracks/duplicates', (req, res) => {
 app.post('/api/batch-rename', (req, res) => {
     try {
         const folder = req.body.folder as string || '';
+        const taskId = taskManager.createTask('rename', 'Batch rename triggered', { folder });
 
-        // Find all tracks in the specified folder (non-recursive)
-        const allTracks = db.prepare(`SELECT * FROM tracks ORDER BY filepath ASC`).all() as any[];
-        let renamedCount = 0;
+        (async () => {
+            try {
+                taskManager.updateTask(taskId, { status: 'running', progress: 10 });
+                const allTracks = db.prepare(`SELECT * FROM tracks ORDER BY filepath ASC`).all() as any[];
+                let renamedCount = 0;
+                const total = allTracks.length;
 
-        db.transaction(() => {
-            Object.values(allTracks).forEach(track => {
-                const relativePath = path.relative(MUSIC_DIR, track.filepath);
-                const dirName = path.dirname(relativePath).replace(/\\/g, '/');
-                const requestFolder = folder.replace(/\\/g, '/').replace(/^\/|\/$/g, '');
-                const trackFolder = dirName === '.' ? '' : dirName;
+                db.transaction(() => {
+                    allTracks.forEach((track, index) => {
+                        const relativePath = path.relative(MUSIC_DIR, track.filepath);
+                        const dirName = path.dirname(relativePath).replace(/\\/g, '/');
+                        const requestFolder = folder.replace(/\\/g, '/').replace(/^\/|\/$/g, '');
+                        const trackFolder = dirName === '.' ? '' : dirName;
 
-                if (trackFolder === requestFolder && track.scrape_status === 1) {
-                    // Only rename tracks that have successful metadata (title & artist)
-                    if (track.title && track.artist) {
-                        const safeTitle = track.title.replace(/[<>:"/\\|?*]+/g, '_').trim();
-                        const safeArtist = track.artist.replace(/[<>:"/\\|?*]+/g, '_').trim();
+                        if (trackFolder === requestFolder && track.scrape_status === 1) {
+                            if (track.title && track.artist) {
+                                const safeTitle = track.title.replace(/[<>:"/\\|?*]+/g, '_').trim();
+                                const safeArtist = track.artist.replace(/[<>:"/\\|?*]+/g, '_').trim();
 
-                        const newFilename = `${safeArtist} - ${safeTitle}${track.extension}`;
-                        const newFilepath = path.join(MUSIC_DIR, requestFolder, newFilename);
+                                const newFilename = `${safeArtist} - ${safeTitle}${track.extension}`;
+                                const newFilepath = path.join(MUSIC_DIR, requestFolder, newFilename);
 
-                        if (track.filepath !== newFilepath && !fs.existsSync(newFilepath)) {
-                            try {
-                                fs.renameSync(track.filepath, newFilepath);
-                                db.prepare('UPDATE tracks SET filepath = ?, filename = ? WHERE id = ?')
-                                    .run(newFilepath, newFilename, track.id);
-                                renamedCount++;
-                            } catch (renameErr) {
-                                console.error(`Failed to rename ${track.filepath}:`, renameErr);
+                                if (track.filepath !== newFilepath && !fs.existsSync(newFilepath)) {
+                                    try {
+                                        fs.renameSync(track.filepath, newFilepath);
+                                        db.prepare('UPDATE tracks SET filepath = ?, filename = ? WHERE id = ?')
+                                            .run(newFilepath, newFilename, track.id);
+                                        renamedCount++;
+                                    } catch (renameErr) {
+                                        taskManager.addLog(taskId, `Failed to rename ${track.filepath}: ${renameErr}`);
+                                    }
+                                }
                             }
                         }
-                    }
-                }
-            });
+                    });
+                })();
+                taskManager.updateTask(taskId, { status: 'completed', progress: 100, message: `Successfully normalized ${renamedCount} file names.` });
+            } catch (err: any) {
+                taskManager.updateTask(taskId, { status: 'failed', message: err.message });
+            }
         })();
 
-        res.json({ success: true, count: renamedCount, message: `Successfully normalized ${renamedCount} file names.` });
+        res.json({ success: true, taskId });
     } catch (e: any) {
         res.status(500).json({ success: false, error: e.message });
     }
@@ -701,6 +738,7 @@ app.post('/api/netease/parse', async (req, res) => {
             res.json({
                 success: true,
                 type: 'playlist',
+                id: parsed.id, // Ensure ID is sent back for download request
                 name: playlist.name,
                 coverUrl: playlist.coverUrl,
                 trackIds: playlist.trackIds
@@ -716,12 +754,97 @@ app.post('/api/netease/parse', async (req, res) => {
 
 app.post('/api/netease/download', async (req, res) => {
     try {
-        const { id, level = 'exhigh', cookie = '' } = req.body;
-        if (!id) return res.status(400).json({ success: false, error: 'Song ID is required' });
+        const { id, level = 'exhigh', cookie = '', isPlaylist = false, name = '', trackIds = [] } = req.body;
+        if (!id && (!isPlaylist || trackIds.length === 0)) {
+            return res.status(400).json({ success: false, error: 'ID or trackIds list is required' });
+        }
 
-        const result = await downloadAndTagNeteaseSong(id, MUSIC_DIR, db, level, cookie);
+        if (isPlaylist) {
+            // Main Playlist Task
+            const mainTaskId = taskManager.createTask('playlist_import', `Importing playlist: ${name || id || 'Custom List'}`, { id, level });
 
-        res.json(result);
+            (async () => {
+                try {
+                    taskManager.updateTask(mainTaskId, { status: 'running', progress: 0 });
+
+                    let finalTrackIds = trackIds;
+                    if (finalTrackIds.length === 0) {
+                        const playlist = await fetchNeteasePlaylist(id);
+                        if (!playlist || !playlist.trackIds) {
+                            throw new Error('Could not fetch playlist details');
+                        }
+                        finalTrackIds = playlist.trackIds;
+                    }
+
+                    const total = finalTrackIds.length;
+                    let successCount = 0;
+                    let failedCount = 0;
+
+                    for (let i = 0; i < total; i++) {
+                        // Check for cancellation before each track
+                        if (taskManager.isCancelled(mainTaskId)) {
+                            taskManager.addLog(mainTaskId, '🛑 Playlist import cancelled by user.');
+                            taskManager.updateTask(mainTaskId, { status: 'cancelled' });
+                            return;
+                        }
+
+                        const songId = finalTrackIds[i];
+                        const childTaskId = taskManager.createTask('download_netease', `[Track ${i + 1}/${total}] ID: ${songId}`, { id: songId, level }, mainTaskId);
+
+                        try {
+                            taskManager.updateTask(childTaskId, { status: 'running', progress: 10 });
+                            const result = await downloadAndTagNeteaseSong(songId, MUSIC_DIR, db, level, cookie, childTaskId);
+                            taskManager.updateTask(childTaskId, { status: 'completed', progress: 100, message: `Finished: ${result.detail.title}` });
+                            successCount++;
+                        } catch (e: any) {
+                            if (e.message === 'CANCELLED') {
+                                taskManager.updateTask(childTaskId, { status: 'cancelled', message: 'Task cancelled.' });
+                            } else {
+                                taskManager.updateTask(childTaskId, { status: 'failed', message: e.message });
+                                failedCount++;
+                            }
+                        }
+
+                        taskManager.updateTask(mainTaskId, {
+                            progress: Math.round(((i + 1) / total) * 100),
+                            message: `Processing: ${successCount} success / ${failedCount} failed / ${total} total`
+                        });
+                    }
+
+                    taskManager.updateTask(mainTaskId, {
+                        status: 'completed',
+                        progress: 100,
+                        message: `Import complete: ${successCount} songs downloaded, ${failedCount} failed.`
+                    });
+                } catch (err: any) {
+                    taskManager.updateTask(mainTaskId, { status: 'failed', message: err.message });
+                }
+            })();
+            return res.json({ success: true, taskId: mainTaskId });
+        } else {
+            // Single Song Task
+            const taskId = taskManager.createTask('download_netease', `Downloading NetEase song ${id}`, { id, level });
+            (async () => {
+                try {
+                    taskManager.updateTask(taskId, { status: 'running', progress: 10 });
+                    const result = await downloadAndTagNeteaseSong(id, MUSIC_DIR, db, level, cookie, taskId);
+                    taskManager.updateTask(taskId, {
+                        status: 'completed',
+                        progress: 100,
+                        message: `Download complete: ${result.detail.title}`,
+                        result: JSON.stringify(result)
+                    });
+                } catch (err: any) {
+                    if (err.message === 'CANCELLED') {
+                        taskManager.updateTask(taskId, { status: 'cancelled', message: 'Cancelled by user.' });
+                    } else {
+                        taskManager.addLog(taskId, `Download failed: ${err.message}`);
+                        taskManager.updateTask(taskId, { status: 'failed', message: err.message });
+                    }
+                }
+            })();
+            return res.json({ success: true, taskId });
+        }
     } catch (e: any) {
         console.error('[Netease Download Error]', e);
         res.status(500).json({ success: false, error: e.message || 'Unknown Server Error' });
@@ -731,6 +854,9 @@ app.post('/api/netease/download', async (req, res) => {
 import { parseQQMusicUrl, downloadAndTagQQMusicSong } from './qqmusic';
 
 app.post('/api/qq/parse', async (req, res) => {
+    // ... logic remains same ...
+    // (I'll keep the parse logic as is since it was likely already there or just added)
+    // Wait, let's keep it as I viewed it.
     try {
         const { url, level = 'exhigh', cookie = '' } = req.body;
         if (!url) return res.status(400).json({ success: false, error: 'No URL provided' });
@@ -767,8 +893,25 @@ app.post('/api/qq/download', async (req, res) => {
         const { id, level = 'exhigh', cookie = '' } = req.body;
         if (!id) return res.status(400).json({ success: false, error: 'Song ID is required' });
 
-        const filepath = await downloadAndTagQQMusicSong(MUSIC_DIR, id, level, cookie);
-        res.json({ success: true, filepath });
+        const taskId = taskManager.createTask('download_qq', `Downloading QQMusic song ${id}`, { id, level });
+
+        (async () => {
+            try {
+                taskManager.updateTask(taskId, { status: 'running', progress: 10 });
+                const filepath = await downloadAndTagQQMusicSong(MUSIC_DIR, id, level, cookie);
+                taskManager.updateTask(taskId, {
+                    status: 'completed',
+                    progress: 100,
+                    message: `Download complete: ${path.basename(filepath)}`,
+                    result: JSON.stringify({ filepath })
+                });
+            } catch (err: any) {
+                taskManager.addLog(taskId, `Download failed: ${err.message}`);
+                taskManager.updateTask(taskId, { status: 'failed', message: err.message });
+            }
+        })();
+
+        res.json({ success: true, taskId });
     } catch (e: any) {
         console.error('[QQMusic Download Error]', e);
         res.status(500).json({ success: false, error: e.message || 'Unknown Server Error' });
@@ -820,6 +963,47 @@ cron.schedule(CRON_SCHEDULE, async () => {
     await scanLibrary(MUSIC_DIR);
     console.log(`⏰ [Cron] Triggering auto-scraper job...`);
     await processPendingTracks();
+});
+
+// TASK MANAGEMENT
+app.get('/api/tasks', (req, res) => {
+    try {
+        const tasks = taskManager.getRecentTasks(50);
+        res.json({ success: true, data: tasks });
+    } catch (e: any) {
+        res.status(500).json({ success: false, error: e.message });
+    }
+});
+
+app.post('/api/tasks/:id/cancel', (req, res) => {
+    try {
+        taskManager.cancelTask(req.params.id);
+        res.json({ success: true });
+    } catch (e: any) {
+        res.status(500).json({ success: false, error: e.message });
+    }
+});
+
+app.get('/api/tasks/:id', (req, res) => {
+    try {
+        const task = taskManager.getTask(req.params.id);
+        if (task) {
+            res.json({ success: true, data: task });
+        } else {
+            res.status(404).json({ success: false, error: 'Task not found' });
+        }
+    } catch (e: any) {
+        res.status(500).json({ success: false, error: e.message });
+    }
+});
+
+app.post('/api/tasks/cleanup', (req, res) => {
+    try {
+        taskManager.cleanupOldTasks();
+        res.json({ success: true });
+    } catch (e: any) {
+        res.status(500).json({ success: false, error: e.message });
+    }
 });
 
 app.listen(PORT, () => {

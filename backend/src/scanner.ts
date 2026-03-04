@@ -4,10 +4,21 @@ import crypto from 'crypto';
 import * as mm from 'music-metadata';
 import { db } from './db';
 
+import { taskManager } from './taskManager';
+
 const AUDIO_EXTENSIONS = new Set(['.mp3', '.flac', '.m4a', '.wav', '.ogg']);
 
-export async function scanLibrary(musicDir: string) {
-    console.log(`🔍 [Scanner] Starting full library scan on: ${musicDir}`);
+export async function scanLibrary(musicDir: string, taskId?: string) {
+    const log = (msg: string) => {
+        if (taskId) {
+            taskManager.addLog(taskId, msg);
+        } else {
+            console.log(msg);
+        }
+    };
+
+    log(`🔍 [Scanner] Starting full library scan on: ${musicDir}`);
+    if (taskId) taskManager.updateTask(taskId, { status: 'running', progress: 0 });
 
     let scannedCount = 0;
     let addedCount = 0;
@@ -66,15 +77,14 @@ export async function scanLibrary(musicDir: string) {
                                 size: stats.size,
                             });
                             addedCount++;
+                            if (addedCount % 10 === 0 && taskId) {
+                                taskManager.updateTask(taskId, { message: `Scanning... found ${addedCount} new tracks` });
+                            }
 
                         } catch (err: any) {
-                            console.error(`❌ [Scanner] Error parsing metadata for ${fullPath}: ${err.message}`);
+                            log(`❌ [Scanner] Error parsing metadata for ${fullPath}: ${err.message}`);
                         }
                     } else {
-                        // For existing records, only update the file size (no-cost stat call).
-                        // Re-parsing audio metadata for every known file on every scan is
-                        // extremely expensive: music-metadata reads and allocates large Buffers
-                        // (including embedded cover art) for each file, causing memory spikes.
                         try {
                             const stats = fs.statSync(fullPath);
                             updateTechnicalMeta.run({
@@ -92,12 +102,24 @@ export async function scanLibrary(musicDir: string) {
 
     await walk(musicDir);
 
-    console.log(`🧹 [Scanner] Cleaning up orphan records...`);
+    log(`🧹 [Scanner] Cleaning up orphan records...`);
+    let cleanupCount = 0;
     for (const record of allKnownFiles) {
         if (!fs.existsSync(record.filepath)) {
             cleanupStmt.run(record.filepath);
+            cleanupCount++;
         }
     }
 
-    console.log(`✅ [Scanner] Scan complete. Found ${scannedCount} audio files, added ${addedCount} new files for future scraping.`);
+    const resultMsg = `✅ [Scanner] Scan complete. Found ${scannedCount} files, added ${addedCount} new, removed ${cleanupCount} orphans.`;
+    log(resultMsg);
+
+    if (taskId) {
+        taskManager.updateTask(taskId, {
+            status: 'completed',
+            progress: 100,
+            message: resultMsg,
+            result: JSON.stringify({ scannedCount, addedCount, cleanupCount })
+        });
+    }
 }

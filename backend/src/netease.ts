@@ -217,9 +217,9 @@ export async function fetchFallbackFromMetingTencent(songName: string, singerNam
         const rawSinger = ((singerName || '').split(/[,、&]+/)[0] || '').trim();
         const keyword = encodeURIComponent(`${rawSinger} ${songName}`);
 
-        // 尝试从 i-meto 检索 ID
-        const searchUrl = `https://api.i-meto.com/meting/api?server=tencent&type=search&id=${keyword}`;
-        const res = await axios.get(searchUrl, { timeout: 8000 });
+        // 尝试从 injahow 检索 ID (相比 i-meto 更稳定且支持更多码率劫持)
+        const searchUrl = `https://api.injahow.cn/meting/?server=tencent&type=search&id=${keyword}`;
+        const res = await axios.get(searchUrl, { timeout: 10000 });
 
         if (res && res.data && Array.isArray(res.data) && res.data.length > 0) {
             const matches = res.data.filter((s: any) =>
@@ -245,14 +245,17 @@ export async function fetchFallbackFromBilibili(songName: string, singerName: st
         const rawSinger = ((singerName || '').split(/[,、&]+/)[0] || '').trim();
         const keyword = encodeURIComponent(`${rawSinger} ${songName}`);
 
-        const searchUrl = `https://api.i-meto.com/meting/api?server=bilibili&type=search&id=${keyword}`;
-        const res = await axios.get(searchUrl, { timeout: 8000 });
+        // Note: Standard Meting usually doesn't support bilibili search via the same endpoint
+        // Using netease search as a final fallback for different editions/regions if needed
+        // but here we just try to use a more reliable netease fallback if tencent fails
+        const searchUrl = `https://api.injahow.cn/meting/?server=netease&type=search&id=${keyword}`;
+        const res = await axios.get(searchUrl, { timeout: 10000 });
 
         if (res && res.data && Array.isArray(res.data) && res.data.length > 0) {
             const target = res.data[0];
-            if (target && target.url) {
-                console.log(`[Bilibili: Search-Hit] ✔️ 命中外部节点: ${target.title}`);
-                return target.url;
+            if (target && target.id) {
+                console.log(`[Fallback: Search-Hit] ✔️ 命中外部节点: ${target.title}`);
+                return `https://api.injahow.cn/meting/?server=netease&type=url&id=${target.id}&br=320`;
             }
         }
     } catch (e) {
@@ -288,8 +291,22 @@ export async function fetchFallbackFromKugou(songName: string, singerName: strin
 }
 
 import { probeAudioQuality } from './utils/probe';
+import { taskManager } from './taskManager';
 
-export async function downloadAndTagNeteaseSong(id: number | string, musicDir: string, db: Database, level: string = 'exhigh', cookie: string = '') {
+export async function downloadAndTagNeteaseSong(id: number | string, musicDir: string, db: Database, level: string = 'exhigh', cookie: string = '', taskId?: string) {
+    const log = (msg: string) => {
+        if (taskId) taskManager.addLog(taskId, msg);
+        console.log(`[Netease:${id}] ${msg}`);
+    };
+    const warn = (msg: string) => {
+        if (taskId) taskManager.addLog(taskId, `⚠️ ${msg}`);
+        console.warn(`[Netease:${id}] ${msg}`);
+    };
+    const error = (msg: string) => {
+        if (taskId) taskManager.addLog(taskId, `❌ ${msg}`);
+        console.error(`[Netease:${id}] ${msg}`);
+    };
+
     try {
         const detail = await fetchNeteaseSongDetail(id);
         if (!detail) throw new Error(`Song detail not found for ID ${id}`);
@@ -322,33 +339,33 @@ export async function downloadAndTagNeteaseSong(id: number | string, musicDir: s
         let isFatalAbsence = false;
 
         if (requiresFallback) {
-            console.warn(`[Netease: Fallback] 正在执行全网搜索 (腾讯/酷狗/B站/i-meto)...`);
+            warn(`正在执行全网搜索 (腾讯/酷狗/B站/i-meto)...`);
             const netease: any = await import('./netease.js');
 
             let fallbackUrl = await netease.fetchFallbackFromMetingTencent(detail.title, detail.artist, level);
             if (!fallbackUrl) {
-                console.warn(`[Netease: Fallback] 腾讯节点未命中，尝试酷狗节点...`);
+                warn(`腾讯节点未命中，尝试酷狗节点...`);
                 fallbackUrl = await netease.fetchFallbackFromKugou(detail.title, detail.artist);
             }
             if (!fallbackUrl) {
-                console.warn(`[Netease: Fallback] 酷狗节点亦失效，尝试 B 站音频库搜索...`);
+                warn(`酷狗节点亦失效，尝试镜像节点搜索...`);
                 fallbackUrl = await netease.fetchFallbackFromBilibili(detail.title, detail.artist);
             }
 
             if (fallbackUrl) {
-                console.log(`[Netease: Fallback] ✔️ 截获平替源链接！执行校验...`);
+                log(`✔️ 截获平替源链接！执行校验...`);
                 finalHitUrl = fallbackUrl;
                 // 对平替源再次进行兜底探测 (必须保证是完整内容)
                 const fallbackProbe = await probeAudioQuality(finalHitUrl, 'tencent', (detail as any).duration || 0);
                 if (!fallbackProbe.valid) {
-                    console.error(`[Netease: Fallback] ❌ 平替源探针校验失败。`);
+                    error(`平替源探针校验失败。`);
                     isFatalAbsence = true;
                 } else {
                     probeResult = fallbackProbe;
-                    console.log(`[Netease: Fallback] 探针复核通过: ${probeResult.mime} - ${probeResult.bitrate}kbps`);
+                    log(`探针复核通过: ${probeResult.mime} - ${probeResult.bitrate}kbps`);
                 }
             } else {
-                console.error(`[Netease: Fallback] ❌ 所有平替方案均未检索到有效资源。`);
+                error(`所有平替方案均未检索到有效资源。`);
                 isFatalAbsence = true;
             }
         }
@@ -384,14 +401,23 @@ export async function downloadAndTagNeteaseSong(id: number | string, musicDir: s
         const filepath = path.join(downloadsDir, filename);
 
         // 安全写入管线
-        console.log(`[Netease] 正在向终端磁盘写入音频流: ${filename}`);
+        log(`正在向磁盘写入音频流: ${filename}`);
         const audioRes = await axios.get(finalHitUrl, { responseType: 'stream', timeout: 30000 });
         const writer = fs.createWriteStream(filepath);
         audioRes.data.pipe(writer);
 
         await new Promise((resolve, reject) => {
-            writer.on('finish', resolve);
-            writer.on('error', reject);
+            const ck = setInterval(() => {
+                if (taskId && taskManager.isCancelled(taskId)) {
+                    audioRes.data.destroy();
+                    writer.destroy();
+                    if (fs.existsSync(filepath)) fs.unlinkSync(filepath);
+                    clearInterval(ck);
+                    reject(new Error('CANCELLED'));
+                }
+            }, 1000);
+            writer.on('finish', () => { clearInterval(ck); resolve(true); });
+            writer.on('error', (err) => { clearInterval(ck); reject(err); });
         });
 
         // 终极检测修复：确保落地文件体积不是试听碎流

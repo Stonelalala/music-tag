@@ -87,8 +87,8 @@
               <div class="flex flex-col sm:flex-row items-stretch sm:items-center gap-3 w-full max-w-2xl">
                   <div class="flex items-center gap-2 flex-1">
                       <select v-model="searchSource" class="bg-slate-800 border border-slate-600 rounded px-2 md:px-3 py-2 text-xs md:text-sm text-slate-200 focus:border-indigo-500 focus:outline-none shrink-0">
-                          <option value="qq">QQ Music</option>
                           <option value="netease">NetEase Music</option>
+                          <option value="qq">QQ Music</option>
                           <option value="itunes">iTunes Global</option>
                       </select>
                       <input v-model="searchQuery" @keyup.enter="doSearch" type="text" class="flex-1 bg-slate-800 border border-slate-600 rounded px-3 py-2 text-xs md:text-sm text-slate-200 focus:border-indigo-500 focus:outline-none min-w-0" :placeholder="$t('ui.edit.search_placeholder')" />

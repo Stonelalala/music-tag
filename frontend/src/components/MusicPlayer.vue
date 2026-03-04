@@ -308,24 +308,24 @@ onUnmounted(() => {
         <div class="absolute bottom-12 w-full max-w-4xl px-8 z-20">
             <div class="flex flex-col gap-4">
                 <div class="flex items-center gap-4">
-                    <span class="text-xs font-mono text-app-primary opacity-50">{{ formatTime(currentTime) }}</span>
+                    <span class="text-xs font-mono text-app-primary font-bold">{{ formatTime(currentTime) }}</span>
                     <div class="flex-1 h-1.5 relative group cursor-pointer">
                         <input type="range" :min="0" :max="duration || 100" :value="currentTime" @input="seek" class="absolute inset-0 w-full h-full opacity-0 z-20 cursor-pointer" />
                         <div class="absolute inset-0 bg-app-muted/30 rounded-full overflow-hidden">
                             <div class="h-full bg-gradient-to-r from-emerald-400 to-cyan-400 shadow-[0_0_15px_rgba(52,211,153,0.5)]" :style="{ width: `${(currentTime/(duration || 1))*100}%` }"></div>
                         </div>
                     </div>
-                    <span class="text-xs font-mono text-app-primary opacity-50">{{ formatTime(duration) }}</span>
+                    <span class="text-xs font-mono text-app-primary font-bold">{{ formatTime(duration) }}</span>
                 </div>
                 <div class="flex justify-center items-center gap-10">
-                   <button @click="emit('prev')" class="text-app-primary opacity-40 hover:opacity-100 transition transform active:scale-90">
+                   <button @click="emit('prev')" class="text-app-primary hover:text-app-accent transition transform active:scale-90 opacity-80 hover:opacity-100">
                        <svg xmlns="http://www.w3.org/2000/svg" width="28" height="28" viewBox="0 0 24 24" fill="currentColor"><path d="M6 6h2v12H6zm3.5 6L19 18V6z"/></svg>
                    </button>
-                   <button @click="togglePlay" class="w-16 h-16 rounded-full flex items-center justify-center transition-all shadow-xl hover:scale-110 active:scale-90 bg-cyan-400 text-slate-900">
+                   <button @click="togglePlay" class="w-16 h-16 rounded-full flex items-center justify-center transition-all shadow-xl hover:scale-110 active:scale-90 bg-cyan-500 text-white">
                      <svg v-if="!isPlaying" xmlns="http://www.w3.org/2000/svg" width="30" height="30" viewBox="0 0 24 24" fill="currentColor"><polygon points="5 3 19 12 5 21 5 3" /></svg>
                      <svg v-else xmlns="http://www.w3.org/2000/svg" width="30" height="30" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="4" width="6" height="16" /><rect x="14" y="4" width="6" height="16" /></svg>
                    </button>
-                   <button @click="emit('next')" class="text-app-primary opacity-40 hover:opacity-100 transition transform active:scale-90">
+                   <button @click="emit('next')" class="text-app-primary hover:text-app-accent transition transform active:scale-90 opacity-80 hover:opacity-100">
                        <svg xmlns="http://www.w3.org/2000/svg" width="28" height="28" viewBox="0 0 24 24" fill="currentColor"><path d="M6 18l8.5-6L6 6v12zM16 6v12h2V6h-2z"/></svg>
                    </button>
                 </div>
@@ -380,7 +380,7 @@ onUnmounted(() => {
 
     <!-- Floating Music Controller (Glass Pill) -->
     <div class="fixed bottom-8 left-0 right-0 mx-auto w-[92%] max-w-4xl z-[80] group px-4">
-        <div class="glass-pill px-6 py-4 flex items-center justify-between gap-6 relative overflow-hidden border border-white/10 shadow-[0_32px_80px_-20px_rgba(0,0,0,0.8)] bg-black/60 backdrop-blur-3xl">
+        <div class="glass-pill glass-theme px-6 py-4 flex items-center justify-between gap-6 relative overflow-hidden shadow-[0_32px_80px_-20px_rgba(0,0,0,0.8)]">
             <!-- Aurora Accent Glow -->
             <div class="absolute -left-10 -top-10 w-32 h-32 bg-app-accent/20 rounded-full blur-3xl opacity-0 group-hover:opacity-100 transition-opacity"></div>
             
@@ -395,53 +395,53 @@ onUnmounted(() => {
                     </div>
                 </div>
                 <div class="flex flex-col min-w-0">
-                    <h3 class="font-black text-sm tracking-tight text-white leading-tight truncate">{{ track.title }}</h3>
-                    <p class="text-[11px] font-bold text-emerald-400 select-none truncate">{{ track.artist }}</p>
+                    <h3 class="font-black text-sm tracking-tight text-app-primary leading-tight truncate">{{ track.title }}</h3>
+                    <p class="text-[11px] font-bold text-app-accent select-none truncate">{{ track.artist }}</p>
                 </div>
             </div>
 
             <!-- Central Transport Controls -->
             <div class="flex flex-col items-center gap-1 flex-[1.5]">
                 <div class="flex items-center gap-7">
-                    <button @click="emit('prev')" class="text-white/30 hover:text-white transition transform active:scale-90 hidden sm:block">
+                    <button @click="emit('prev')" class="text-app-primary/60 hover:text-black transition transform active:scale-90 hidden sm:block">
                         <svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="currentColor"><path d="M6 6h2v12H6zm3.5 6L19 18V6z"/></svg>
                     </button>
-                    <button @click="togglePlay" class="w-13 h-13 rounded-full flex items-center justify-center transition-all shadow-[0_0_30px_rgba(255,255,255,0.2)] hover:shadow-white/30 hover:scale-105 active:scale-95 bg-white text-black border-4 border-white/5">
+                    <button @click="togglePlay" class="w-13 h-13 rounded-full flex items-center justify-center transition-all shadow-xl hover:scale-105 active:scale-95 bg-app-primary text-app-secondary border-2 border-app">
                         <svg v-if="!isPlaying" xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="currentColor" class="ml-1"><polygon points="5 3 19 12 5 21 5 3" /></svg>
                         <svg v-else xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="4" width="4" height="16" /><rect x="14" y="4" width="4" height="16" /></svg>
                     </button>
-                    <button @click="emit('next')" class="text-white/30 hover:text-white transition transform active:scale-90">
+                    <button @click="emit('next')" class="text-app-primary/60 hover:text-black transition transform active:scale-90">
                         <svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="currentColor"><path d="M6 18l8.5-6L6 6v12zM16 6v12h2V6h-2z"/></svg>
                     </button>
                 </div>
                 <!-- Mini Progress Bar -->
                 <div class="hidden md:flex w-full items-center gap-3 px-4">
-                    <span class="text-[9px] font-black font-mono text-white/50 min-w-[35px] text-right">{{ formatTime(currentTime) }}</span>
-                    <div class="flex-1 h-1 relative group bg-white/10 rounded-full overflow-hidden">
+                    <span class="text-[9px] font-black font-mono text-app-primary/60 min-w-[35px] text-right">{{ formatTime(currentTime) }}</span>
+                    <div class="flex-1 h-1 relative group bg-app-muted/20 rounded-full overflow-hidden">
                         <input type="range" :min="0" :max="duration || 100" :value="currentTime" @input="seek" class="absolute inset-0 w-full h-full opacity-0 z-10 cursor-pointer" />
                         <div class="h-full bg-emerald-400 rounded-full shadow-[0_0_12px_rgba(52,211,153,0.4)]" :style="{ width: `${(currentTime/(duration || 1))*100}%` }"></div>
                     </div>
-                    <span class="text-[9px] font-black font-mono text-white/50 min-w-[35px]">{{ formatTime(duration) }}</span>
+                    <span class="text-[9px] font-black font-mono text-app-primary/60 min-w-[35px]">{{ formatTime(duration) }}</span>
                 </div>
             </div>
 
             <!-- Action & Volume Area -->
             <div class="flex-1 hidden sm:flex items-center justify-end gap-3">
-                <div class="flex items-center gap-1 mr-2 px-3 py-1.5 bg-white/5 rounded-full border border-white/5 group/vol">
-                    <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" class="text-white/30 group-hover/vol:text-emerald-400 transition-colors"><path d="M11 5L6 9H2v6h4l5 4V5z"/><path d="M15.54 8.46a5 5 0 0 1 0 7.07"/></svg>
+                <div class="flex items-center gap-1 mr-2 px-3 py-1.5 bg-app-muted/10 rounded-full border border-app/10 group/vol">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" class="text-app-primary/40 group-hover/vol:text-emerald-400 transition-colors"><path d="M11 5L6 9H2v6h4l5 4V5z"/><path d="M15.54 8.46a5 5 0 0 1 0 7.07"/></svg>
                     <input type="range" min="0" max="1" step="0.01" :value="volume" @input="updateVolume" 
-                           class="w-16 h-1 appearance-none bg-transparent cursor-pointer rounded-full overflow-hidden" 
-                           :style="`background: linear-gradient(to right, #10b981 ${volume*100}%, rgba(255,255,255,0.1) ${volume*100}%)`" />
+                           class="w-16 h-1 appearance-none bg-transparent cursor-pointer rounded-full overflow-hidden border-none" 
+                           :style="`background: linear-gradient(to right, #10b981 ${volume*100}%, rgba(0,0,0,0.1) ${volume*100}%)`" />
                 </div>
                 
-                <div class="flex items-center gap-2 border-l border-white/10 pl-3">
-                    <button @click="showLyrics = !showLyrics" class="p-2 transition-all rounded-xl hover:bg-white/10" :class="showLyrics ? 'text-emerald-400' : 'text-white/30 hover:text-white'">
+                <div class="flex items-center gap-2 border-l border-app/20 pl-3">
+                    <button @click="showLyrics = !showLyrics" class="p-2 transition-all rounded-xl hover:bg-app-accent/10" :class="showLyrics ? 'text-app-accent' : 'text-app-primary/40 hover:text-app-primary'">
                         <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
                     </button>
-                    <button @click="showPlaylist = !showPlaylist" class="p-2 transition-all rounded-xl hover:bg-white/10" :class="showPlaylist ? 'text-emerald-400' : 'text-white/30 hover:text-white'">
+                    <button @click="showPlaylist = !showPlaylist" class="p-2 transition-all rounded-xl hover:bg-app-accent/10" :class="showPlaylist ? 'text-app-accent' : 'text-app-primary/40 hover:text-app-primary'">
                         <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg>
                     </button>
-                    <button @click="emit('close')" class="p-2 text-rose-500/40 hover:text-rose-500 hover:bg-rose-500/10 transition-all rounded-xl ml-1">
+                    <button @click="emit('close')" class="p-2 text-rose-500/60 hover:text-rose-500 hover:bg-rose-500/10 transition-all rounded-xl ml-1">
                         <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" /></svg>
                     </button>
                 </div>

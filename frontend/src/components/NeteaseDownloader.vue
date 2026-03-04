@@ -138,13 +138,13 @@
                       <svg v-else xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="currentColor" stroke="none"><rect x="6" y="4" width="4" height="16"></rect><rect x="14" y="4" width="4" height="16"></rect></svg>
                       {{ isPaused ? t('downloader.resume_queue') : t('downloader.pause_queue') }}
                    </button>
-                   <button 
-                      v-if="isDownloading"
-                      @click="isCancelled = true" 
-                      class="px-4 py-2.5 bg-rose-900/40 border border-rose-800 hover:bg-rose-900/60 text-white rounded font-bold text-sm transition flex items-center gap-2"
-                   >
-                      {{ t('downloader.cancel') }}
-                   </button>
+                    <button 
+                       v-if="isDownloading"
+                       @click="cancelCurrentTask" 
+                       class="px-4 py-2.5 bg-rose-900/40 border border-rose-800 hover:bg-rose-900/60 text-white rounded font-bold text-sm transition flex items-center gap-2"
+                    >
+                       {{ t('downloader.cancel') }}
+                    </button>
                </template>
 
                <button 
@@ -199,6 +199,7 @@ const parsedData = ref<any>(null);
 const isDownloading = ref(false);
 const isPaused = ref(false);
 const isCancelled = ref(false);
+const activeBackendTaskId = ref<string | null>(null);
 const logs = ref<string[]>([]);
 const logContainer = ref<any>(null);
 
@@ -284,16 +285,60 @@ const downloadSingle = async (id: number | string): Promise<boolean> => {
             level: selectedLevel.value,
             cookie: cookieData.value
         });
-        if (res.data.success) {
-            addLog(t('downloader.log_success', { path: res.data.filepath }));
-            return true;
+        
+        if (res.data.success && res.data.taskId) {
+            const taskId = res.data.taskId;
+            // Poll for completion
+            return new Promise((resolve) => {
+                const poll = async () => {
+                    if (isCancelled.value) {
+                       resolve(false);
+                       return;
+                    }
+                    try {
+                        const taskRes = await axios.get(`/api/tasks/${taskId}`);
+                        if (taskRes.data.success) {
+                            const task = taskRes.data.data;
+                            if (task.status === 'completed') {
+                                addLog(t('downloader.log_success', { path: task.message }));
+                                resolve(true);
+                            } else if (task.status === 'failed') {
+                                addLog(t('downloader.log_fail', { error: task.message }));
+                                resolve(false);
+                            } else {
+                                // Still running
+                                setTimeout(poll, 1000);
+                            }
+                        } else {
+                            resolve(false);
+                        }
+                    } catch (e) {
+                        resolve(false);
+                    }
+                };
+                poll();
+            });
         } else {
-            addLog(t('downloader.log_fail', { error: res.data.error }));
+            addLog(t('downloader.log_fail', { error: res.data.error || 'No taskId returned' }));
             return false;
         }
     } catch (e: any) {
         addLog(t('downloader.log_refused', { error: e.response?.data?.error || e.message }));
         return false;
+    }
+}
+
+const cancelCurrentTask = async () => {
+    if (activeBackendTaskId.value) {
+        if (confirm(t('tasks.cancel_confirm') || '确定要中止此任务吗？')) {
+            try {
+                await axios.post(`/api/tasks/${activeBackendTaskId.value}/cancel`);
+                isCancelled.value = true;
+                addLog('🛑 中止指令已发送至后端引擎');
+            } catch (e) {}
+        }
+    } else {
+        isCancelled.value = true;
     }
 }
 
@@ -303,39 +348,59 @@ const startDownload = async () => {
     isDownloading.value = true;
     isPaused.value = false;
     isCancelled.value = false;
+    activeBackendTaskId.value = null;
     
     try {
         if (parsedData.value.type === 'song') {
             const sl = parsedData.value.data[0];
-            await downloadSingle(sl.neteaseId || sl.qqId);
+            await downloadSingle(sl.neteaseId || sl.qqId || sl.id);
         } else if (parsedData.value.type === 'playlist') {
-            const ids = parsedData.value.trackIds || [];
-            addLog(t('downloader.warn_batch_start', { count: ids.length }));
+            const id = parsedData.value.id || parsedData.value.playlistId;
+            const name = parsedData.value.name;
+            const trackIds = parsedData.value.trackIds || [];
+            addLog(`🚀 [Backend] 正在向后端下发集群收割指令: ${name}`);
             
-            let successCount = 0;
-            let failedCount = 0;
+            const endPoint = inputUrl.value.includes('qq.com') ? '/api/qq/download' : '/api/netease/download';
+            const res = await axios.post(endPoint, { 
+                id, 
+                level: selectedLevel.value,
+                cookie: cookieData.value,
+                isPlaylist: true,
+                name,
+                trackIds: trackIds
+            });
 
-            for (let i = 0; i < ids.length; i++) {
-                if (isCancelled.value) {
-                    addLog(t('downloader.log_interrupted'));
-                    break;
-                }
-
-                while (isPaused.value) {
-                    await new Promise(r => setTimeout(r, 500));
-                    if (isCancelled.value) break;
-                }
-                if (isCancelled.value) break;
-
-                addLog(t('downloader.log_preparing', { current: i + 1, total: ids.length, id: ids[i] }));
-                const ok = await downloadSingle(ids[i]);
-                if (ok) successCount++;
-                else failedCount++;
+            if (res.data.success && res.data.taskId) {
+                activeBackendTaskId.value = res.data.taskId;
+                addLog(`✅ 任务已创建: ${activeBackendTaskId.value}。由于是歌单级下载，您可以安全关闭此页面，在侧边栏「任务中枢」实时追踪。`);
                 
-                await new Promise(r => setTimeout(r, 1500)); // Rate limit 1.5s
-            }
-            if (!isCancelled.value) {
-                 addLog(t('downloader.log_finished', { success: successCount, failed: failedCount }));
+                // Poll for the MAIN playlist task completion
+                return new Promise((resolve) => {
+                    const poll = async () => {
+                        if (isCancelled.value) { resolve(false); return; }
+                        try {
+                            const taskRes = await axios.get(`/api/tasks/${activeBackendTaskId.value}`);
+                            if (taskRes.data.success) {
+                                const task = taskRes.data.data;
+                                if (task.status === 'completed') {
+                                    addLog(`🎉 ${task.message}`);
+                                    resolve(true);
+                                } else if (task.status === 'failed') {
+                                    addLog(`❌ ${task.message}`);
+                                    resolve(false);
+                                } else if (task.status === 'cancelled') {
+                                    addLog(`🛑 任务已被取消`);
+                                    resolve(false);
+                                } else {
+                                    setTimeout(poll, 2000);
+                                }
+                            } else { resolve(false); }
+                        } catch (e) { resolve(false); }
+                    };
+                    poll();
+                });
+            } else {
+                addLog(`❌ 启动失败: ${res.data.error || 'Unknown Error'}`);
             }
         }
         
@@ -344,6 +409,7 @@ const startDownload = async () => {
         isDownloading.value = false;
         isPaused.value = false;
         isCancelled.value = false;
+        activeBackendTaskId.value = null;
     }
 }
 

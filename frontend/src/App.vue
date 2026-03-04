@@ -68,222 +68,248 @@
     </div>
   </div>
 
-  <div v-else class="h-screen bg-app-primary text-app-primary flex flex-col font-sans overflow-hidden">
+  <div v-else class="h-screen bg-app-primary text-app-primary flex flex-col font-sans overflow-hidden relative selection:bg-app-accent/30 transition-colors duration-700">
+    <!-- Premium Background Blobs -->
+    <div class="fixed inset-0 overflow-hidden pointer-events-none z-0">
+        <div class="bg-blob -top-[20%] -left-[10%] opacity-20"></div>
+        <div class="bg-blob -bottom-[20%] -right-[10%] opacity-10 [animation-delay:-5s] scale-125"></div>
+        <div class="absolute inset-0 bg-theme-gradient opacity-80"></div>
+    </div>
+
     <!-- Header (Fixed Height, No Scroll) -->
-    <header class="bg-app-sidebar border-b border-app h-14 px-4 md:px-6 flex-shrink-0 flex items-center justify-between shadow-xl z-50">
-      <div class="flex items-center gap-2">
+    <header class="relative z-50 bg-app-sidebar/40 backdrop-blur-2xl border-b border-app h-16 px-4 md:px-8 flex-shrink-0 flex items-center justify-between">
+      <div class="flex items-center gap-4">
         <!-- Mobile Menu Trigger -->
         <button 
           @click="isSidebarOpen = true" 
-          class="md:hidden w-10 h-10 rounded-xl bg-app-accent/10 text-app-accent flex items-center justify-center shrink-0 active:scale-90 transition-transform"
+          class="md:hidden w-11 h-11 rounded-2xl bg-app-muted text-app-secondary flex items-center justify-center shrink-0 active:scale-90 transition-transform border border-app"
         >
-            <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
+            <svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
         </button>
 
         <!-- Desktop Identity -->
-        <div class="hidden md:flex items-center gap-3">
-          <div class="w-8 h-8 rounded bg-emerald-500/20 text-emerald-400 flex items-center justify-center shrink-0">
-              <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></svg>
+        <div class="hidden md:flex items-center gap-4">
+          <div class="w-10 h-10 rounded-2xl bg-emerald-500/10 text-emerald-400 flex items-center justify-center shrink-0 border border-emerald-500/20 shadow-lg shadow-emerald-500/5">
+              <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></svg>
           </div>
-          <div class="hidden sm:block">
-            <h1 class="text-sm md:text-xl font-bold bg-gradient-to-r from-emerald-500 to-cyan-500 bg-clip-text text-transparent truncate">{{ t('title') }}</h1>
-            <p class="text-[10px] md:text-xs text-app-muted truncate">{{ t('subtitle') }}</p>
+          <div class="hidden lg:block">
+            <h1 class="text-xl font-black bg-gradient-to-r from-white to-slate-400 bg-clip-text text-transparent tracking-tighter">{{ t('title') }}</h1>
+            <p class="text-[10px] font-black text-slate-500 uppercase tracking-[0.2em]">{{ t('subtitle') }}</p>
           </div>
         </div>
 
         <!-- Mobile Title (Compact) -->
-        <h1 class="md:hidden text-base font-black tracking-tighter text-app-primary uppercase">{{ t('title').substring(0, 4) }}</h1>
+        <h1 class="md:hidden text-lg font-black tracking-tighter text-white uppercase">{{ t('title').substring(0, 4) }}</h1>
       </div>
 
-      <div class="flex items-center gap-2 md:gap-4">
-        <button @click="toggleLang" class="hidden md:block text-xs px-2 py-1 bg-app-muted hover:bg-app-secondary rounded text-app-primary border border-app">
-           {{ t('lang_toggle') }}
+      <div class="flex items-center gap-3">
+        <button @click="toggleLang" class="hidden sm:flex items-center gap-2 px-4 py-2 bg-white/5 hover:bg-white/10 border border-white/10 rounded-full text-[10px] font-black uppercase tracking-widest text-slate-300 transition-all active:scale-95">
+           <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>
+           {{ locale.toUpperCase() }}
         </button>
-
-        <button @click="refreshStatus" class="p-2 text-app-muted hover:text-app-primary transition">
-            <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/></svg>
-        </button>
-
-        <div class="relative group">
-            <button class="btn-app-accent transition px-3 md:px-4 py-2 rounded-md font-bold text-sm flex items-center gap-2 shadow-lg" :disabled="!!status && status.dbStatus.pending === 0">
-                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2" /></svg>
-                <span class="hidden sm:inline">{{ t('scraper_title') }}</span>
-                <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="ml-1"><path d="m6 9 6 6 6-6"/></svg>
-            </button>
-            <div class="absolute right-0 mt-2 w-[85vw] sm:w-[22rem] bg-app-sidebar border border-app rounded-lg shadow-xl shadow-black/50 opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all duration-200 z-[60] transform origin-top-right scale-95 group-hover:scale-100">
-                <div class="p-4 border-b border-app">
-                    <p class="text-xs text-app-secondary">{{ t('scraper_desc') }}</p>
-                    <p v-if="status" class="text-[10px] text-app-muted mt-2 font-mono truncate">{{ t('watched_dir') }}: {{ status.musicDir }}</p>
-                </div>
-                <div class="p-2 flex flex-col gap-1">
-                    <button @click="triggerScan" class="w-full text-left px-3 py-2 text-sm hover:bg-app-muted rounded flex items-center gap-2 transition text-app-primary">
-                        <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16"/><path d="M3 21v-5h5"/><path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/></svg>
-                        {{ t('scan_btn') }}
-                    </button>
-                    <button @click="triggerScrape" :disabled="!!status && status.dbStatus.pending === 0" class="w-full text-left px-3 py-2 text-sm text-emerald-400 hover:bg-emerald-500/10 rounded flex items-center gap-2 disabled:opacity-40 transition">
-                        {{ t('scrape_btn') }}
-                    </button>
-                    <div class="h-px bg-slate-700 mx-2 my-1"></div>
-                    <button @click="isNeteaseOpen = true" class="w-full text-left px-3 py-2 text-sm text-rose-400 hover:bg-rose-500/10 rounded flex items-center gap-2 transition">
-                        {{ t('downloader.title') }}
-                    </button>
-                    <button @click="isSettingsOpen = true" class="w-full text-left px-3 py-2 text-sm text-slate-300 hover:bg-slate-700 rounded flex items-center gap-2 transition text-slate-300">
-                        {{ t('settings_btn') }}
-                    </button>
-                    <div class="h-px bg-slate-700 mx-2 my-1"></div>
-                    <button @click="logout" class="w-full text-left px-3 py-2 text-sm text-rose-400 hover:bg-rose-500/10 rounded flex items-center gap-2 transition">
-                         <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
-                         {{ t('logout_btn') }}
-                    </button>
-                    <div class="md:hidden h-px bg-slate-700 mx-2 my-1"></div>
-                    <button @click="toggleLang" class="md:hidden w-full text-left px-3 py-2 text-sm text-slate-400 hover:bg-slate-700 rounded transition">
-                        {{ t('lang_toggle') }}
-                    </button>
-                    <!-- Theme Selector -->
-                    <div class="h-px bg-slate-700 mx-2 my-1"></div>
-                    <div class="px-3 py-2">
-                        <p class="text-[10px] text-slate-500 uppercase font-bold tracking-widest mb-2">{{ t('theme_toggle') }}</p>
-                        <div class="grid grid-cols-4 gap-2">
-                           <button 
-                             v-for="tname in themes" 
-                             :key="tname" 
-                             @click="currentTheme = tname"
-                             class="w-full h-6 rounded border transition relative"
-                             :class="[currentTheme === tname ? 'border-indigo-400 ring-1 ring-indigo-400' : 'border-slate-700', getThemeColor(tname)]"
-                           ></button>
-                        </div>
-                    </div>
-                </div>
+        
+        <div v-if="status" class="hidden xl:flex items-center gap-6 bg-white/5 px-6 py-2 rounded-full border border-white/10 shadow-inner">
+            <div class="flex items-center gap-2.5">
+                <span class="w-2 h-2 rounded-full bg-emerald-500 shadow-[0_0_12px_rgba(16,185,129,0.8)] animate-pulse"></span>
+                <span class="text-[10px] font-black text-slate-300 uppercase tracking-widest">{{ t('ui.tracks.synced_ok') }} <span class="text-emerald-400 ml-1">{{ status.dbStatus.success }}</span></span>
+            </div>
+            <div class="w-px h-3 bg-white/10"></div>
+            <div class="flex items-center gap-2.5">
+                <span class="w-2 h-2 rounded-full bg-rose-500 shadow-[0_0_12px_rgba(244,63,94,0.5)]"></span>
+                <span class="text-[10px] font-black text-slate-300 uppercase tracking-widest">{{ t('ui.tracks.need_fix') }} <span class="text-rose-400 ml-1">{{ status.dbStatus.failed }}</span></span>
             </div>
         </div>
+
+        <button @click="refreshStatus" class="w-10 h-10 flex items-center justify-center text-slate-400 hover:text-emerald-400 hover:bg-emerald-500/10 rounded-xl transition-all active:rotate-180 duration-700">
+            <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/></svg>
+        </button>
       </div>
     </header>
+
     
     <div class="flex flex-1 overflow-hidden relative">
-      <!-- Global Sidebar (Moved from TrackList) -->
+      <!-- Global Sidebar -->
       <aside 
-        class="fixed inset-y-0 left-0 w-64 bg-app-sidebar border-r border-app transform transition-transform duration-300 ease-in-out z-[100] md:relative md:translate-x-0 flex flex-col shrink-0"
+        class="fixed inset-y-0 left-0 w-72 bg-app-sidebar/60 backdrop-blur-3xl border-r border-app transform transition-transform duration-500 cubic-bezier(0.16, 1, 0.3, 1) z-[100] md:relative md:translate-x-0 flex flex-col shrink-0"
         :class="isSidebarOpen ? 'translate-x-0' : '-translate-x-full'"
       >
-        <!-- Logo / Brand Section -->
-        <div class="px-6 py-8 flex items-center justify-between border-b border-app mb-4">
-          <div class="flex items-center gap-3">
-            <div class="w-8 h-8 rounded bg-emerald-500/20 text-emerald-400 flex items-center justify-center">
-              <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></svg>
-            </div>
-            <h1 class="text-lg font-black text-app-primary">{{ t('title').substring(0, 4) }}</h1>
-          </div>
-          <!-- Mobile Close Button -->
-          <button @click="isSidebarOpen = false" class="md:hidden p-2 text-app-muted hover:text-white transition-colors">
-            <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+        <!-- Logo Area -->
+        <div class="px-8 py-6 flex items-center justify-end md:hidden">
+          <!-- Mobile Close -->
+          <button @click="isSidebarOpen = false" class="md:hidden w-10 h-10 flex items-center justify-center text-slate-500 hover:text-white transition-colors">
+            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
           </button>
         </div>
 
-        <div class="flex-1 overflow-y-auto overflow-x-hidden p-4 space-y-8 scrollbar-hide">
-          <!-- Main Navigation -->
-          <div>
-            <h3 class="px-4 text-[10px] font-black text-app-muted uppercase tracking-widest mb-4">Navigation</h3>
-            <ul class="space-y-1">
-              <li>
+        <div class="flex-1 overflow-y-auto overflow-x-hidden p-6 space-y-10 custom-scrollbar">
+          <!-- Navigation -->
+          <div class="space-y-4">
+            <h3 class="px-4 text-[10px] font-black text-slate-500 uppercase tracking-[0.3em]">Core</h3>
+            <ul class="space-y-2">
+              <li v-for="nav in [
+                { id: 'library', icon: 'M3 3h7v7H3zm11 0h7v7h-7zm0 11h7v7h-7zm-11 0h7v7H3z', label: t('tab_tracks'), color: 'emerald' },
+                { id: 'discovery', icon: 'M12 2a10 10 0 1 0 10 10A10 10 0 0 0 12 2zm4 6-8 8m4 0h-4v-4', label: t('tab_discovery'), color: 'rose' },
+                { id: 'tasks', icon: 'M12 2v20m5-5-5 5-5-5m0-10 5-5 5 5', label: t('tasks.title'), color: 'emerald' }
+              ]" :key="nav.id">
                 <button 
-                  @click="switchToTab('library')" 
-                  class="w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all group lg:hover:bg-app-accent/10"
-                  :class="currentTab === 'library' ? 'bg-app-accent text-white shadow-lg shadow-app-accent/20' : 'text-app-secondary'"
+                  @click="switchToTab(nav.id)" 
+                  class="w-full flex items-center gap-4 px-5 py-4 rounded-[20px] transition-all duration-500 group relative overflow-hidden"
+                  :class="currentTab === nav.id ? `bg-${nav.color}-500 text-[#020617]` : 'text-app-muted hover:bg-app-accent/10 hover:text-app-primary'"
                 >
-                  <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><rect width="7" height="7" x="3" y="3" rx="1"/><rect width="7" height="7" x="14" y="3" rx="1"/><rect width="7" height="7" x="14" y="14" rx="1"/><rect width="7" height="7" x="3" y="14" rx="1"/></svg>
-                  <span class="text-sm font-bold">{{ t('tab_tracks') }}</span>
-                </button>
-              </li>
-              <li>
-                <button 
-                  @click="switchToTab('discovery')" 
-                  class="w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all group lg:hover:bg-rose-500/10"
-                  :class="currentTab === 'discovery' ? 'bg-rose-600 text-white shadow-lg shadow-rose-500/20' : 'text-app-secondary'"
-                >
-                  <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="12" cy="12" r="10"/><path d="m16 8-8 8"/><path d="M12 16H8v-4"/></svg>
-                  <span class="text-sm font-bold">{{ t('tab_discovery') }}</span>
+                  <div v-if="currentTab === nav.id" class="absolute inset-0 bg-gradient-to-br from-white/20 to-transparent"></div>
+                  <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" class="relative z-10 shrink-0"><path :d="nav.icon"/></svg>
+                  <span class="text-sm font-black relative z-10 text-left leading-tight transition-transform duration-500 overflow-hidden line-clamp-2">{{ nav.label }}</span>
+                  <div v-if="nav.id === 'tasks' && activeTaskCount > 0" class="ml-auto px-2 py-0.5 rounded-md bg-[#020617]/20 text-[#020617] text-[9px] font-black uppercase tracking-wider relative z-10 shrink-0">{{ activeTaskCount }}</div>
                 </button>
               </li>
             </ul>
           </div>
 
-          <!-- Dynamic Folders Section (Only shown for library) -->
-          <div v-if="currentTab === 'library'">
-            <div class="flex items-center justify-between px-4 mb-4">
-              <h3 class="text-[10px] font-black text-app-muted uppercase tracking-widest">{{ t('ui.sidebar.folders') }}</h3>
-              <button v-if="currentFolder" @click="goUp" class="text-[10px] font-bold text-app-accent hover:underline">
+          <!-- Dynamic Folders -->
+          <div v-if="currentTab === 'library'" class="space-y-4">
+            <div class="flex items-center justify-between px-4">
+              <h3 class="text-[10px] font-black text-slate-500 uppercase tracking-[0.3em]">{{ t('ui.sidebar.folders') }}</h3>
+              <button v-if="currentFolder" @click="goUp" class="text-[10px] font-black text-emerald-500 hover:text-emerald-400 transition-colors uppercase tracking-[0.2em] underline underline-offset-4 decoration-2">
                 {{ t('ui.sidebar.back') }}
               </button>
             </div>
             
-            <ul class="space-y-0.5">
+            <ul class="space-y-1">
               <li v-for="folder in folders" :key="'global_f_'+folder">
                 <button 
                   @click="enterFolder(folder)"
-                  class="w-full text-left px-4 py-2.5 rounded-xl flex items-center gap-3 transition-colors text-app-muted hover:bg-app-accent/10 hover:text-app-primary group"
+                  class="w-full text-left px-4 py-3 rounded-2xl flex items-center gap-4 transition-all duration-300 text-app-muted hover:bg-app-accent/10 hover:text-app-primary group active:scale-95"
                 >
-                  <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" class="opacity-40 group-hover:opacity-100 transition-opacity"><path d="M4 20h16a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.93a2 2 0 0 1-1.66-.9l-.82-1.2A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13c0 1.1.9 2 2 2Z"/></svg>
-                  <span class="text-[13px] font-medium truncate">{{ folder }}</span>
+                  <div class="w-8 h-8 rounded-xl bg-app-muted/50 flex items-center justify-center border border-app group-hover:border-app-accent/30 group-hover:text-app-accent transition-all">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M4 20h16a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.93a2 2 0 0 1-1.66-.9l-.82-1.2A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13c0 1.1.9 2 2 2Z"/></svg>
+                  </div>
+                  <span class="text-[13px] font-bold truncate">{{ folder }}</span>
                 </button>
               </li>
-              <li v-if="folders.length === 0 && !currentFolder" class="px-4 py-6 text-center text-xs text-app-muted italic border-2 border-dashed border-app rounded-2xl">
+              <li v-if="folders.length === 0 && !currentFolder" class="px-6 py-12 text-center text-[10px] text-slate-600 font-black uppercase tracking-[0.2em] border-2 border-dashed border-white/5 rounded-3xl mx-2">
                  {{ t('ui.sidebar.empty') }}
               </li>
             </ul>
           </div>
         </div>
 
-        <!-- Footer Actions in Sidebar -->
-        <div class="p-4 border-t border-app space-y-2">
-            <button @click="isSettingsOpen = true" class="w-full flex items-center gap-3 px-4 py-2.5 rounded-xl text-app-secondary hover:bg-app-muted transition-colors">
-              <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/><circle cx="12" cy="12" r="3"/></svg>
-              <span class="text-xs font-bold">{{ t('settings_btn') }}</span>
-            </button>
-            <button @click="logout" class="w-full flex items-center gap-3 px-4 py-2.5 rounded-xl text-rose-500 hover:bg-rose-500/10 transition-colors">
-              <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
-              <span class="text-xs font-bold">{{ t('logout_btn') }}</span>
-            </button>
+        <!-- Sidebar Footer -->
+        <div class="p-6 border-t border-app bg-app-sidebar/40 backdrop-blur-3xl relative">
+            <!-- Subtle gradient inside footer -->
+            <div class="absolute -right-10 -bottom-10 w-32 h-32 bg-emerald-500/5 rounded-full blur-3xl"></div>
+            
+            <div class="flex items-center gap-3 relative z-10">
+                <!-- Settings Popover -->
+                <div class="relative group flex-1">
+                    <button class="w-full flex items-center gap-4 px-5 py-4 rounded-2xl text-app-primary bg-app-muted hover:bg-app-accent hover:text-[#020617] transition-all duration-500 font-black border border-app hover:border-app-accent">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/><circle cx="12" cy="12" r="3"/></svg>
+                        <span class="text-sm truncate uppercase tracking-widest">{{ t('settings_btn') }}</span>
+                    </button>
+                    
+                    <!-- Advanced Toolbox Popover -->
+                    <div class="absolute bottom-full left-0 mb-4 w-72 bg-app-sidebar border border-app rounded-[32px] opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all duration-500 transform translate-y-4 group-hover:translate-y-0 z-[110] p-4 backdrop-blur-3xl overflow-hidden shadow-xl">
+                        <div class="flex items-center gap-3 px-2 mb-4">
+                             <div class="w-8 h-8 rounded-xl bg-emerald-500/10 text-emerald-500 flex items-center justify-center shrink-0 border border-emerald-500/20">
+                                 <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/></svg>
+                             </div>
+                             <p class="text-[10px] font-black text-app-primary uppercase tracking-[0.2em] leading-tight text-left">{{ t('scraper_title') }}</p>
+                        </div>
+                        
+                        <div class="space-y-1">
+                            <button @click="triggerScan" class="w-full flex items-center gap-4 px-4 py-3 rounded-2xl text-[11px] font-bold text-emerald-400 transition-all hover:bg-white/5 active:scale-95 group/item">
+                                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" class="group-hover/item:scale-120 transition-transform shrink-0"><path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16M3 21v-5h5M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8M21 3v5h-5"/></svg>
+                                <span class="text-left leading-tight uppercase tracking-widest">{{ t('scan_btn') }}</span>
+                            </button>
+                            <button @click="triggerScrape" :disabled="!!status && status.dbStatus.pending === 0" class="w-full flex items-center gap-4 px-4 py-3 rounded-2xl text-[11px] font-bold text-emerald-400 transition-all hover:bg-white/5 active:scale-95 disabled:opacity-30 group/item">
+                                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" class="group-hover/item:scale-120 transition-transform shrink-0"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>
+                                <span class="text-left leading-tight uppercase tracking-widest">{{ t('scrape_btn') }}</span>
+                            </button>
+                            <button @click="triggerResetScrape" :disabled="!!status && status.dbStatus.success === 0" class="w-full flex items-center gap-4 px-4 py-3 rounded-2xl text-[11px] font-bold text-amber-400 transition-all hover:bg-white/5 active:scale-95 disabled:opacity-30 group/item">
+                                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" class="group-hover/item:scale-120 transition-transform shrink-0"><path d="M1 4v6h6"/><path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10"/></svg>
+                                <span class="text-left leading-tight uppercase tracking-widest">{{ t('reset_scrape_btn') }}</span>
+                            </button>
+                            <button @click="isNeteaseOpen = true" class="w-full flex items-center gap-4 px-4 py-3 rounded-2xl text-[11px] font-bold text-rose-400 transition-all hover:bg-white/5 active:scale-95 group/item">
+                                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" class="group-hover/item:scale-120 transition-transform shrink-0"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3"/></svg>
+                                <span class="text-left leading-tight uppercase tracking-widest">{{ t('downloader.title') }}</span>
+                            </button>
+                            <button @click="isSettingsOpen = true" class="w-full flex items-center gap-4 px-4 py-3 rounded-2xl text-[11px] font-bold text-blue-400 transition-all hover:bg-white/5 active:scale-95 group/item">
+                                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" class="group-hover/item:scale-120 transition-transform shrink-0"><circle cx="12" cy="12" r="3"/><path d="M12 2v2"/><path d="M12 20v2M2 12h2M20 12h2"/></svg>
+                                <span class="text-left leading-tight uppercase tracking-widest">{{ t('settings_btn') }}</span>
+                            </button>
+                        </div>
+
+                        <div class="mt-5 pt-5 border-t border-app">
+                             <p class="text-[9px] font-black text-app-muted uppercase tracking-[0.2em] mb-4 px-2 text-left">{{ t('theme_toggle') }}</p>
+                            <div class="grid grid-cols-4 gap-3 p-1">
+                                <button v-for="tname in themes" :key="tname" @click="currentTheme = tname"
+                                    class="aspect-square rounded-xl border-2 transition-all hover:scale-110 active:scale-90 relative"
+                                    :class="[currentTheme === tname ? 'border-app-accent ring-4 ring-app-accent/20' : 'border-app', getThemeColor(tname)]"
+                                >
+                                    <div v-if="currentTheme === tname" class="absolute inset-0 flex items-center justify-center text-white">
+                                        <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="4"><polyline points="20 6 9 17 4 12"/></svg>
+                                    </div>
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Logout Button -->
+                <button @click="logout" class="w-14 h-14 flex items-center justify-center rounded-2xl text-rose-500 bg-rose-500/10 hover:bg-rose-500 hover:text-white transition-all duration-500 border border-rose-500/20 active:scale-90" :title="t('logout_btn')">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
+                </button>
+            </div>
         </div>
       </aside>
 
-      <!-- Mobile Overlay Backdrop -->
-      <transition enter-active-class="transition-opacity duration-300" enter-from-class="opacity-0" enter-to-class="opacity-100" leave-active-class="transition-opacity duration-200" leave-from-class="opacity-100" leave-to-class="opacity-0">
-        <div v-if="isSidebarOpen" @click="isSidebarOpen = false" class="fixed inset-0 bg-black/60 backdrop-blur-sm z-[90] md:hidden"></div>
+
+      <!-- Mobile Backdrop -->
+      <transition enter-active-class="transition-opacity duration-500" enter-from-class="opacity-0" enter-to-class="opacity-100" leave-active-class="transition-opacity duration-300" leave-from-class="opacity-100" leave-to-class="opacity-0">
+        <div v-if="isSidebarOpen" @click="isSidebarOpen = false" class="fixed inset-0 bg-app-primary/80 backdrop-blur-xl z-[90] md:hidden"></div>
       </transition>
 
-      <!-- Main Content Area -->
-      <main class="flex-1 overflow-hidden relative">
-          <div class="h-full w-full p-2 md:p-4 max-w-full mx-auto flex flex-col overflow-auto custom-scrollbar">
-              <template v-if="status">
-                  <template v-if="currentTab === 'library'">
-                      <TrackList 
-                          :status="status"
-                          :tracks="tracks"
-                          :folders="folders"
-                          :current-folder="currentFolder"
-                          @edit="openEditDrawer" 
-                          @play="(track, list) => playTrack(track, list)"
-                          @refresh="triggerScan"
-                          @enter-folder="enterFolder"
-                          @fetch-tracks="fetchTracks"
-                      />
+      <main class="flex-1 overflow-hidden relative p-6">
+          <div class="h-full w-full max-w-full mx-auto flex flex-col overflow-hidden relative z-10 bento-card shadow-2xl">
+              <transition name="page" mode="out-in">
+                  <template v-if="status" :key="currentTab">
+                      <template v-if="currentTab === 'library'">
+                          <TrackList 
+                              :status="status"
+                              :tracks="tracks"
+                              :folders="folders"
+                              :current-folder="currentFolder"
+                              @edit="openEditDrawer" 
+                              @play="(track, list) => playTrack(track, list)"
+                              @refresh="triggerScan"
+                              @enter-folder="enterFolder"
+                              @fetch-tracks="fetchTracks"
+                          />
+                      </template>
+                      <template v-else-if="currentTab === 'discovery'">
+                          <DiscoveryView />
+                      </template>
+                      <template v-else-if="currentTab === 'tasks'">
+                          <TasksView />
+                      </template>
                   </template>
-                  <template v-else-if="currentTab === 'discovery'">
-                      <DiscoveryView />
-                  </template>
-              </template>
-              <div v-else class="text-center py-20 text-slate-500 flex flex-col items-center justify-center flex-1">
-                  <div class="animate-pulse flex flex-col items-center gap-4">
-                     <div class="w-12 h-12 rounded-full border-4 border-slate-700 border-t-emerald-500 animate-spin"></div>
-                     {{ t('connecting') }}
+                  <div v-else class="text-center h-full flex flex-col items-center justify-center flex-1">
+                      <div class="animate-pulse flex flex-col items-center gap-6">
+                         <div class="w-16 h-16 rounded-full border-[6px] border-white/5 border-t-emerald-500 animate-spin shadow-2xl shadow-emerald-500/20"></div>
+                         <p class="text-xs font-black uppercase tracking-[0.3em] text-slate-400">{{ t('connecting') }}</p>
+                      </div>
                   </div>
-              </div>
+              </transition>
           </div>
-          <!-- Toast messages -->
-          <div v-if="toastMsg" class="fixed top-6 left-1/2 -translate-x-1/2 bg-slate-800 text-cyan-400 text-sm px-5 py-3 rounded-full border border-slate-600 shadow-2xl z-[9999] animate-bounce whitespace-nowrap">
-              {{ toastMsg }}
-          </div>
+          
+          <!-- Toast Notification -->
+          <transition enter-active-class="transition duration-500 ease-out" enter-from-class="translate-y-20 opacity-0" enter-to-class="translate-y-0 opacity-100" leave-active-class="transition duration-300 ease-in" leave-from-class="translate-y-0 opacity-100" leave-to-class="translate-y-10 opacity-0">
+            <div v-if="toastMsg" class="fixed bottom-12 left-1/2 -translate-x-1/2 bg-app-sidebar text-emerald-500 text-xs font-black px-8 py-4 rounded-[20px] border border-emerald-500/20 z-[9999] flex items-center gap-3 backdrop-blur-3xl uppercase tracking-widest whitespace-nowrap shadow-xl">
+                <div class="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></div>
+                {{ toastMsg }}
+            </div>
+          </transition>
       </main>
+
     </div>
 
     <!-- Global Components -->
@@ -313,6 +339,7 @@ import NeteaseDownloader from './components/NeteaseDownloader.vue';
 import SettingsModal from './components/SettingsModal.vue';
 import MusicPlayer from './components/MusicPlayer.vue';
 import DiscoveryView from './components/DiscoveryView.vue';
+import TasksView from './components/TasksView.vue';
 import { toastMsg, useToast } from './composables/useToast';
 import { useAuth } from './composables/useAuth';
 import { watch, reactive } from 'vue';
@@ -340,8 +367,18 @@ const handleLogin = async () => {
 };
 
 // App Tabbing
-const currentTab = ref('library'); // 'library' | 'discovery'
+const currentTab = ref('library'); // 'library' | 'discovery' | 'tasks'
 const isSidebarOpen = ref(false);
+const activeTaskCount = ref(0);
+
+const fetchActiveTaskCount = async () => {
+    try {
+        const res = await axios.get('/api/tasks');
+        if (res.data.success) {
+            activeTaskCount.value = res.data.data.filter((t: any) => t.status === 'running' || t.status === 'pending').length;
+        }
+    } catch (e) {}
+};
 
 const tracks = ref<any[]>([]);
 const folders = ref<string[]>([]);
@@ -380,7 +417,7 @@ const switchToTab = (tab: string) => {
 
 // Theme state
 const themes = ['midnight', 'ocean', 'rose', 'forest', 'amber', 'frost', 'sakura', 'mint'];
-const currentTheme = ref(localStorage.getItem('APP_THEME') || 'midnight');
+const currentTheme = ref(localStorage.getItem('APP_THEME') || 'frost');
 
 const getThemeColor = (name: string) => {
     switch(name) {
@@ -519,6 +556,7 @@ const triggerScan = async () => {
     try {
         await axios.post('/api/trigger-scan');
         showToast('msg_scan_ok');
+        currentTab.value = 'tasks';
         refreshStatus();
         fetchTracks(currentFolder.value);
     } catch (e) {
@@ -530,8 +568,23 @@ const triggerScrape = async () => {
     try {
         await axios.post('/api/trigger-scrape');
         showToast('msg_scrape_ok');
+        currentTab.value = 'tasks';
         refreshStatus();
         fetchTracks(currentFolder.value);
+    } catch (e) {
+        showToast('msg_scrape_fail');
+    }
+};
+
+const triggerResetScrape = async () => {
+    if (!confirm(t('tasks.cleanup_confirm'))) return; // Reusing cleanup confirm for simplicity or we could add a new one
+    try {
+        const res = await axios.post('/api/reset-scrape-status');
+        if (res.data.success) {
+            showToast('msg_reset_scrape_ok');
+            refreshStatus();
+            fetchTracks(currentFolder.value);
+        }
     } catch (e) {
         showToast('msg_scrape_fail');
     }
@@ -541,11 +594,13 @@ onMounted(() => {
     if (isAuthenticated.value) {
         refreshStatus();
         fetchTracks();
+        fetchActiveTaskCount();
     }
     // Auto refresh every 3 seconds to see progress
     pollInterval = setInterval(() => {
         if (!isAuthenticated.value) return;
         refreshStatus();
+        fetchActiveTaskCount();
         // If in library, check if we need to refresh list
         if (currentTab.value === 'library' && status.value?.dbStatus.pending && status.value.dbStatus.pending > 0) {
            fetchTracks(currentFolder.value);
