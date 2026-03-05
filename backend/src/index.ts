@@ -136,7 +136,7 @@ app.get('/api/tracks', (req, res) => {
         const folder = req.query.folder as string || '';
         const statusFilter = req.query.status !== undefined ? parseInt(req.query.status as string) : null;
 
-        let allTracks;
+        let allTracks: any[];
         if (statusFilter !== null) {
             allTracks = db.prepare(`SELECT * FROM tracks WHERE scrape_status = ? ORDER BY filepath ASC`).all(statusFilter) as any[];
         } else {
@@ -149,24 +149,19 @@ app.get('/api/tracks', (req, res) => {
         const normalizedRequestFolder = folder.replace(/\\/g, '/').replace(/^\/|\/$/g, '').toLowerCase();
 
         allTracks.forEach(track => {
-            // Normalize path for robust comparison
             const trackDir = path.dirname(track.filepath);
             const relativeDir = path.relative(MUSIC_DIR, trackDir).replace(/\\/g, '/');
             const trackFolder = (relativeDir === '.' || relativeDir === '') ? '' : relativeDir;
             const normalizedTrackFolder = trackFolder.toLowerCase();
 
-            // 1. If we are filtering by status AND NOT by folder, show all matching tracks globally
             if (statusFilter !== null && !folder) {
                 currentTracks.push(track);
-            }
-            // 2. Folder View (Recursive - show current level + all subfolders)
-            else if (
+            } else if (
                 normalizedTrackFolder === normalizedRequestFolder ||
                 normalizedTrackFolder.startsWith(normalizedRequestFolder ? normalizedRequestFolder + '/' : '')
             ) {
                 currentTracks.push(track);
 
-                // Identify immediate subfolder for sidebar navigation
                 if (normalizedTrackFolder !== normalizedRequestFolder) {
                     const relativeToRequest = normalizedRequestFolder === ''
                         ? trackFolder
@@ -181,11 +176,13 @@ app.get('/api/tracks', (req, res) => {
         });
 
         const tracksWithMeta = currentTracks.map(track => {
-            let hasLyrics = false;
-            // (Optional: skip expensive fs checks for large lists if needed)
+            const trackDir = path.dirname(track.filepath);
+            const relativeDir = path.relative(MUSIC_DIR, trackDir).replace(/\\/g, '/');
+            const relativePath = (relativeDir === '.' || relativeDir === '') ? '' : relativeDir;
+
             return {
                 ...track,
-                hasLyrics // Currently not performing heavy FS check here to speed up global filter
+                relative_path: relativePath
             };
         });
 
@@ -201,7 +198,43 @@ app.get('/api/tracks', (req, res) => {
     }
 });
 
-// Advanced: Auto reorganize
+// Discovery: Random tracks
+app.get('/api/discovery/random', (req, res) => {
+    try {
+        const tracks = db.prepare(`SELECT * FROM tracks ORDER BY RANDOM() LIMIT 50`).all() as any[];
+        res.json({ success: true, data: tracks });
+    } catch (e: any) {
+        res.status(500).json({ success: false, error: e.message });
+    }
+});
+
+// Discovery: Recently added
+app.get('/api/discovery/recent', (req, res) => {
+    try {
+        const limit = parseInt(req.query.limit as string) || 50;
+        const tracks = db.prepare(`SELECT * FROM tracks ORDER BY id DESC LIMIT ?`).all(limit) as any[];
+        res.json({ success: true, data: tracks });
+    } catch (e: any) {
+        res.status(500).json({ success: false, error: e.message });
+    }
+});
+
+// Discovery: Recommended Albums
+app.get('/api/discovery/albums', (req, res) => {
+    try {
+        // Get unique albums with a sample track and artist
+        const rows = db.prepare(`
+            SELECT album, artist, id 
+            FROM tracks 
+            GROUP BY album 
+            ORDER BY RANDOM() 
+            LIMIT 20
+        `).all() as any[];
+        res.json({ success: true, data: rows });
+    } catch (e: any) {
+        res.status(500).json({ success: false, error: e.message });
+    }
+});
 app.post('/api/tracks/organize', (req, res) => {
     try {
         const { levels } = req.body;
@@ -253,7 +286,7 @@ app.post('/api/tracks/organize', (req, res) => {
                             }
                         }
                     });
-                })();
+                });
                 taskManager.updateTask(taskId, { status: 'completed', progress: 100, message: `Successfully organized ${organizedCount} files.` });
             } catch (err: any) {
                 taskManager.updateTask(taskId, { status: 'failed', message: err.message });
@@ -385,7 +418,7 @@ app.post('/api/batch-rename', (req, res) => {
                             }
                         }
                     });
-                })();
+                });
                 taskManager.updateTask(taskId, { status: 'completed', progress: 100, message: `Successfully normalized ${renamedCount} file names.` });
             } catch (err: any) {
                 taskManager.updateTask(taskId, { status: 'failed', message: err.message });
@@ -652,7 +685,6 @@ app.get('/api/netease/recommend/songs', async (req, res) => {
     }
 });
 
-
 app.get('/api/netease/playlist/:id', async (req, res) => {
     try {
         const id = req.params.id;
@@ -686,26 +718,13 @@ app.post('/api/netease/parse', async (req, res) => {
                 quality = await probeAudioQuality(dl.url, 'netease', (detail as any).duration || 0);
             }
 
-            // --- 核心升级：如果原生通道 (含 Meting 默认代理) 均为失效源，尝试全网搜索平替以确认是否“可下载” ---
             let downloadable = !!(dl && dl.url && quality?.valid);
 
             if (!downloadable) {
-                console.warn(`[Netease: Parse-Fallback] 原生源失效，正在尝试验证跨平台平替源是否可用...`);
-                // 这里我们调用后端的 fallback 探测逻辑，不下载，仅验证 URL
                 const netease: any = await import('./netease.js');
-
-                console.log(`[Fallback: Sync] 🔍 正在检索腾讯节点...`);
                 let fallbackUrl = await netease.fetchFallbackFromMetingTencent(detail.title, detail.artist, level);
-
-                if (!fallbackUrl) {
-                    console.log(`[Fallback: Sync] 🔍 正在检索酷狗节点...`);
-                    fallbackUrl = await netease.fetchFallbackFromKugou(detail.title, detail.artist);
-                }
-
-                if (!fallbackUrl) {
-                    console.log(`[Fallback: Sync] 🔍 正在检索 B 站节点...`);
-                    fallbackUrl = await netease.fetchFallbackFromBilibili(detail.title, detail.artist);
-                }
+                if (!fallbackUrl) fallbackUrl = await netease.fetchFallbackFromKugou(detail.title, detail.artist);
+                if (!fallbackUrl) fallbackUrl = await netease.fetchFallbackFromBilibili(detail.title, detail.artist);
 
                 if (fallbackUrl) {
                     const { probeAudioQuality } = await import('./utils/probe.js');
@@ -713,12 +732,7 @@ app.post('/api/netease/parse', async (req, res) => {
                     if (fallbackQuality.valid) {
                         downloadable = true;
                         quality = fallbackQuality;
-                        console.log(`[Netease: Parse-Fallback] ✔️ 探测到有效的全网平替源，修正为“可下载”状态。`);
-                    } else {
-                        console.warn(`[Netease: Parse-Fallback] ❌ 搜到的平替源 (${fallbackQuality.mime}) 探针校验失败。`);
                     }
-                } else {
-                    console.warn(`[Netease: Parse-Fallback] ❌ 全网平替（含 B 站）方案已耗尽。`);
                 }
             }
 
@@ -736,11 +750,10 @@ app.post('/api/netease/parse', async (req, res) => {
             const playlist = await fetchNeteasePlaylist(parsed.id);
             if (!playlist) return res.status(404).json({ success: false, error: 'Playlist not found' });
 
-            // To prevent massive API delay, just return the basic info. Frontend or backend queue will batch fetch detailed tracks.
             res.json({
                 success: true,
                 type: 'playlist',
-                id: parsed.id, // Ensure ID is sent back for download request
+                id: parsed.id,
                 name: playlist.name,
                 coverUrl: playlist.coverUrl,
                 trackIds: playlist.trackIds
@@ -749,7 +762,6 @@ app.post('/api/netease/parse', async (req, res) => {
             res.status(400).json({ success: false, error: 'URL could not be parsed' });
         }
     } catch (e: any) {
-        console.error('[Netease Parse Error]', e);
         res.status(500).json({ success: false, error: e.message || 'Unknown Server Error' });
     }
 });
@@ -762,255 +774,133 @@ app.post('/api/netease/download', async (req, res) => {
         }
 
         if (isPlaylist) {
-            // Main Playlist Task
             const mainTaskId = taskManager.createTask('playlist_import', `Importing playlist: ${name || id || 'Custom List'}`, { id, level });
-
             (async () => {
                 try {
                     taskManager.updateTask(mainTaskId, { status: 'running', progress: 0 });
-
                     let finalTrackIds = trackIds;
                     if (finalTrackIds.length === 0) {
                         const playlist = await fetchNeteasePlaylist(id);
-                        if (!playlist || !playlist.trackIds) {
-                            throw new Error('Could not fetch playlist details');
-                        }
+                        if (!playlist || !playlist.trackIds) throw new Error('Could not fetch playlist details');
                         finalTrackIds = playlist.trackIds;
                     }
 
                     const total = finalTrackIds.length;
-                    let successCount = 0;
-                    let failedCount = 0;
-
                     for (let i = 0; i < total; i++) {
-                        // Check for cancellation before each track
                         if (taskManager.isCancelled(mainTaskId)) {
-                            taskManager.addLog(mainTaskId, '🛑 Playlist import cancelled by user.');
                             taskManager.updateTask(mainTaskId, { status: 'cancelled' });
                             return;
                         }
-
                         const songId = finalTrackIds[i];
                         const childTaskId = taskManager.createTask('download_netease', `[Track ${i + 1}/${total}] ID: ${songId}`, { id: songId, level }, mainTaskId);
-
                         try {
                             taskManager.updateTask(childTaskId, { status: 'running', progress: 10 });
-                            const result = await downloadAndTagNeteaseSong(songId, MUSIC_DIR, db, level, cookie, childTaskId);
-                            taskManager.updateTask(childTaskId, { status: 'completed', progress: 100, message: `Finished: ${result.detail.title}` });
-                            successCount++;
-                        } catch (e: any) {
-                            if (e.message === 'CANCELLED') {
-                                taskManager.updateTask(childTaskId, { status: 'cancelled', message: 'Task cancelled.' });
-                            } else {
-                                taskManager.updateTask(childTaskId, { status: 'failed', message: e.message });
-                                failedCount++;
-                            }
+                            await downloadAndTagNeteaseSong(songId, MUSIC_DIR, db, level, cookie, childTaskId);
+                            taskManager.updateTask(childTaskId, { status: 'completed', progress: 100 });
+                        } catch (childErr: any) {
+                            taskManager.updateTask(childTaskId, { status: 'failed', message: childErr.message });
                         }
-
-                        taskManager.updateTask(mainTaskId, {
-                            progress: Math.round(((i + 1) / total) * 100),
-                            message: `Processing: ${successCount} success / ${failedCount} failed / ${total} total`
-                        });
+                        taskManager.updateTask(mainTaskId, { progress: Math.round(((i + 1) / total) * 100) });
                     }
-
-                    taskManager.updateTask(mainTaskId, {
-                        status: 'completed',
-                        progress: 100,
-                        message: `Import complete: ${successCount} songs downloaded, ${failedCount} failed.`
-                    });
+                    taskManager.updateTask(mainTaskId, { status: 'completed', progress: 100 });
                 } catch (err: any) {
                     taskManager.updateTask(mainTaskId, { status: 'failed', message: err.message });
                 }
             })();
-            return res.json({ success: true, taskId: mainTaskId });
+            res.json({ success: true, taskId: mainTaskId });
         } else {
-            // Single Song Task
-            const taskId = taskManager.createTask('download_netease', `Downloading NetEase song ${id}`, { id, level });
+            const taskId = taskManager.createTask('download_netease', `Downloading ID: ${id}`, { id, level });
             (async () => {
                 try {
                     taskManager.updateTask(taskId, { status: 'running', progress: 10 });
-                    const result = await downloadAndTagNeteaseSong(id, MUSIC_DIR, db, level, cookie, taskId);
-                    taskManager.updateTask(taskId, {
-                        status: 'completed',
-                        progress: 100,
-                        message: `Download complete: ${result.detail.title}`,
-                        result: JSON.stringify(result)
-                    });
+                    await downloadAndTagNeteaseSong(id, MUSIC_DIR, db, level, cookie, taskId);
+                    taskManager.updateTask(taskId, { status: 'completed', progress: 100 });
                 } catch (err: any) {
-                    if (err.message === 'CANCELLED') {
-                        taskManager.updateTask(taskId, { status: 'cancelled', message: 'Cancelled by user.' });
-                    } else {
-                        taskManager.addLog(taskId, `Download failed: ${err.message}`);
-                        taskManager.updateTask(taskId, { status: 'failed', message: err.message });
-                    }
+                    taskManager.updateTask(taskId, { status: 'failed', message: err.message });
                 }
             })();
-            return res.json({ success: true, taskId });
+            res.json({ success: true, taskId });
         }
     } catch (e: any) {
-        console.error('[Netease Download Error]', e);
-        res.status(500).json({ success: false, error: e.message || 'Unknown Server Error' });
+        res.status(500).json({ success: false, error: e.message });
     }
 });
 
 import { parseQQMusicUrl, downloadAndTagQQMusicSong } from './qqmusic';
 
 app.post('/api/qq/parse', async (req, res) => {
-    // ... logic remains same ...
-    // (I'll keep the parse logic as is since it was likely already there or just added)
-    // Wait, let's keep it as I viewed it.
     try {
         const { url, level = 'exhigh', cookie = '' } = req.body;
         if (!url) return res.status(400).json({ success: false, error: 'No URL provided' });
-
         const parsed = await parseQQMusicUrl(url, level, cookie);
-
-        if (parsed.type === 'song' && parsed.data && parsed.data.length > 0) {
-            const song = parsed.data[0];
-            if (song) {
-                const { fetchQQMusicDownloadUrl } = await import('./qqmusic.js');
-                const dl = await fetchQQMusicDownloadUrl(song.qqId, level, cookie);
-
-                let quality = null;
-                if (dl && dl.url) {
-                    const { probeAudioQuality } = await import('./utils/probe.js');
-                    quality = await probeAudioQuality(dl.url, 'qq', (song as any).duration || 0);
-                }
-                if (song) {
-                    song.downloadable = !!(dl && dl.url && quality?.valid);
-                    (song as any).quality = quality;
-                }
-            }
-        }
-
         res.json({ success: true, ...parsed });
     } catch (e: any) {
-        console.error('[QQMusic Parse Error]', e);
-        res.status(500).json({ success: false, error: e.message || 'Unknown Server Error' });
+        res.status(500).json({ success: false, error: e.message });
     }
 });
 
 app.post('/api/qq/download', async (req, res) => {
     try {
         const { id, level = 'exhigh', cookie = '' } = req.body;
-        if (!id) return res.status(400).json({ success: false, error: 'Song ID is required' });
-
         const taskId = taskManager.createTask('download_qq', `Downloading QQMusic song ${id}`, { id, level });
-
         (async () => {
             try {
                 taskManager.updateTask(taskId, { status: 'running', progress: 10 });
-                const filepath = await downloadAndTagQQMusicSong(MUSIC_DIR, id, level, cookie);
-                taskManager.updateTask(taskId, {
-                    status: 'completed',
-                    progress: 100,
-                    message: `Download complete: ${path.basename(filepath)}`,
-                    result: JSON.stringify({ filepath })
-                });
+                await downloadAndTagQQMusicSong(MUSIC_DIR, id, level, cookie);
+                taskManager.updateTask(taskId, { status: 'completed', progress: 100 });
             } catch (err: any) {
-                taskManager.addLog(taskId, `Download failed: ${err.message}`);
                 taskManager.updateTask(taskId, { status: 'failed', message: err.message });
             }
         })();
-
         res.json({ success: true, taskId });
-    } catch (e: any) {
-        console.error('[QQMusic Download Error]', e);
-        res.status(500).json({ success: false, error: e.message || 'Unknown Server Error' });
-    }
-});
-
-// SETTINGS & CONFIG
-app.get('/api/settings/config', (req, res) => {
-    try {
-        const configPath = path.join(dataDir, 'settings.json');
-        let config = {};
-        if (fs.existsSync(configPath)) {
-            config = JSON.parse(fs.readFileSync(configPath, 'utf8'));
-        }
-        res.json({ success: true, data: config });
     } catch (e: any) {
         res.status(500).json({ success: false, error: e.message });
     }
+});
+
+app.get('/api/settings/config', (req, res) => {
+    const configPath = path.join(dataDir, 'settings.json');
+    let config = {};
+    if (fs.existsSync(configPath)) config = JSON.parse(fs.readFileSync(configPath, 'utf8'));
+    res.json({ success: true, data: config });
 });
 
 app.post('/api/settings/config', (req, res) => {
-    try {
-        const config = req.body;
-        const configPath = path.join(dataDir, 'settings.json');
-        fs.writeFileSync(configPath, JSON.stringify(config, null, 2), 'utf8');
-        res.json({ success: true });
-    } catch (e: any) {
-        res.status(500).json({ success: false, error: e.message });
-    }
+    const configPath = path.join(dataDir, 'settings.json');
+    fs.writeFileSync(configPath, JSON.stringify(req.body, null, 2), 'utf8');
+    res.json({ success: true });
 });
-// STATIC ASSETS
+
 const frontendDist = path.join(__dirname, '../../frontend/dist');
 app.use(express.static(frontendDist));
 app.get(/.*/, (req, res, next) => {
     if (req.path.startsWith('/api')) return next();
     const indexPath = path.join(frontendDist, 'index.html');
-    if (fs.existsSync(indexPath)) {
-        res.sendFile(indexPath);
-    } else {
-        res.status(404).json({ success: false, error: 'Frontend not built. Please run npm run build in frontend.' });
-    }
+    if (fs.existsSync(indexPath)) res.sendFile(indexPath);
+    else res.status(404).json({ success: false, error: 'Frontend not built.' });
 });
 
-// STARTUP: Setup Cron Job
-// Scrape Schedule (Default everyday at 2 AM)
 const CRON_SCHEDULE = process.env.CRON_SCHEDULE || '0 2 * * *';
 cron.schedule(CRON_SCHEDULE, async () => {
-    console.log(`⏰ [Cron] Executing scheduled music scan...`);
     await scanLibrary(MUSIC_DIR);
-    console.log(`⏰ [Cron] Triggering auto-scraper job...`);
     await processPendingTracks();
 });
 
-// TASK MANAGEMENT
-app.get('/api/tasks', (req, res) => {
-    try {
-        const tasks = taskManager.getRecentTasks(50);
-        res.json({ success: true, data: tasks });
-    } catch (e: any) {
-        res.status(500).json({ success: false, error: e.message });
-    }
-});
-
+app.get('/api/tasks', (req, res) => res.json({ success: true, data: taskManager.getRecentTasks(50) }));
 app.post('/api/tasks/:id/cancel', (req, res) => {
-    try {
-        taskManager.cancelTask(req.params.id);
-        res.json({ success: true });
-    } catch (e: any) {
-        res.status(500).json({ success: false, error: e.message });
-    }
+    taskManager.cancelTask(req.params.id);
+    res.json({ success: true });
 });
-
 app.get('/api/tasks/:id', (req, res) => {
-    try {
-        const task = taskManager.getTask(req.params.id);
-        if (task) {
-            res.json({ success: true, data: task });
-        } else {
-            res.status(404).json({ success: false, error: 'Task not found' });
-        }
-    } catch (e: any) {
-        res.status(500).json({ success: false, error: e.message });
-    }
+    const task = taskManager.getTask(req.params.id);
+    if (task) res.json({ success: true, data: task });
+    else res.status(404).json({ success: false, error: 'Task not found' });
 });
-
 app.post('/api/tasks/cleanup', (req, res) => {
-    try {
-        taskManager.cleanupOldTasks();
-        res.json({ success: true });
-    } catch (e: any) {
-        res.status(500).json({ success: false, error: e.message });
-    }
+    taskManager.cleanupOldTasks();
+    res.json({ success: true });
 });
 
 app.listen(Number(PORT), '0.0.0.0', () => {
-    console.log(`🚀 Music Tag Auto-Scraper API running on http://0.0.0.0:${PORT}`);
-    console.log(`📂 Music Directory watched: ${MUSIC_DIR}`);
-    console.log(`🗄️ Database Directory: ${dataDir}`);
-    console.log(`⏳ Auto-Scrape Schedule: ${CRON_SCHEDULE}`);
+    console.log(`🚀 API running on http://0.0.0.0:${PORT}`);
 });
