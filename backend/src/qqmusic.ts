@@ -5,6 +5,7 @@ import NodeID3 from 'node-id3';
 const Metaflac = require('metaflac-js');
 import crypto from 'crypto';
 import { db } from './db';
+import * as mm from 'music-metadata';
 
 // Extract Tencent ID from link
 export async function parseQQMusicUrl(url: string, level: string = 'exhigh', cookie?: string) {
@@ -85,10 +86,16 @@ export async function fetchQQMusicDownloadUrl(id: string | number, level: string
     if (level === 'standard') br = '128';
 
     const proxyUrl = `https://api.injahow.cn/meting/?server=tencent&type=url&id=${id}${br !== '320' ? '&br=' + br : ''}`;
+    const res = await axios.get(proxyUrl, {
+        headers: {
+            'Referer': 'https://y.qq.com/',
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
+        }
+    });
 
     return {
-        url: proxyUrl,
-        type: br === 'flac' ? 'flac' : 'mp3',
+        url: res.data.url || proxyUrl, // Try direct URL from proxy first
+        type: res.data.type || (br === 'flac' ? 'flac' : 'mp3'),
         usedFallback: false
     };
 }
@@ -112,7 +119,13 @@ export async function fetchQQMusicLyric(id: string | number) {
 
 import { probeAudioQuality } from './utils/probe';
 
-export async function downloadAndTagQQMusicSong(musicDir: string, id: string | number, level: string = 'exhigh', cookie?: string): Promise<string> {
+import { taskManager } from './taskManager';
+
+export async function downloadAndTagQQMusicSong(musicDir: string, id: string | number, level: string = 'exhigh', cookie?: string, taskId?: string): Promise<string> {
+    const log = (msg: string) => {
+        if (taskId) taskManager.addLog(taskId, msg);
+        console.log(`[QQMusic] ${msg}`);
+    };
     try {
         const detail = await fetchQQMusicDetail(id);
         if (!detail) throw new Error(`Song detail not found for ID ${id}`);
@@ -127,7 +140,7 @@ export async function downloadAndTagQQMusicSong(musicDir: string, id: string | n
         const probeResult = await probeAudioQuality(dlInfo.url, 'qq', 0);
 
         if (!probeResult.valid) {
-            console.warn(`[QQMusic] 探针检测到体积异常 (${probeResult.size} bytes)，QQ 代理节点下发了残次源。`);
+            log(`⚠️ 探针检测到体积异常 (${probeResult.size} bytes)，QQ 代理节点下发了残次源。`);
             throw new Error('截获体积过小的腾讯侧残次防盗源，拒绝入库。');
         }
 
@@ -161,8 +174,15 @@ export async function downloadAndTagQQMusicSong(musicDir: string, id: string | n
 
         const filepath = path.join(downloadsDir, filename);
 
-        console.log(`[QQMusic] 开始向磁盘转录音频流本体... -> ${filename} (Size: ${probeResult.size})`);
-        const audioRes = await axios.get(dlInfo.url, { responseType: 'stream', timeout: 30000 });
+        log(`开始向磁盘转录音频流本体... -> ${filename} (Size: ${probeResult.size})`);
+        const audioRes = await axios.get(dlInfo.url, {
+            responseType: 'stream',
+            timeout: 30000,
+            headers: {
+                'Referer': 'https://y.qq.com/',
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
+            }
+        });
         const writer = fs.createWriteStream(filepath);
         audioRes.data.pipe(writer);
 
@@ -209,20 +229,37 @@ export async function downloadAndTagQQMusicSong(musicDir: string, id: string | n
             console.error(`[QQMusic] Tagging error for ${filepath}:`, tagErr);
         }
 
+        // Technical metadata
+        let duration = (detail as any).time || 0;
+        let bitrate = probeResult.bitrate || 0;
+        let finalSize = probeResult.size || 0;
+
+        try {
+            const metadata = await mm.parseFile(filepath);
+            if (metadata.format.duration) duration = metadata.format.duration;
+            if (metadata.format.bitrate) bitrate = Math.floor(metadata.format.bitrate / 1000);
+            finalSize = fs.statSync(filepath).size;
+        } catch (e) {
+            console.error('[QQMusic] Tech info extraction error:', e);
+        }
+
         // Add to database
         try {
             const stmt = db.prepare(`
-                INSERT INTO tracks (id, filepath, filename, extension, title, artist, album, scrape_status)
-                VALUES (?, ?, ?, ?, ?, ?, ?, 1)
+                INSERT INTO tracks (id, filepath, filename, extension, title, artist, album, duration, bitrate, size, scrape_status)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1)
                 ON CONFLICT(filepath) DO UPDATE SET
                     title = excluded.title,
                     artist = excluded.artist,
                     album = excluded.album,
+                    duration = excluded.duration,
+                    bitrate = excluded.bitrate,
+                    size = excluded.size,
                     scrape_status = 1
             `);
             // QQ ID usually string, so we need random ID or the QQ ID
             const dbId = 'qq_' + id;
-            stmt.run(dbId, filepath, filename, ext, titleStr, artistStr, albumStr);
+            stmt.run(dbId, filepath, filename, ext, titleStr, artistStr, albumStr, duration, bitrate, finalSize);
         } catch (dbErr) {
             console.error('[QQMusic] DB Insertion Error:', dbErr);
         }

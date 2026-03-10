@@ -1,0 +1,37 @@
+const { song_url_v1 } = require('NeteaseCloudMusicApi');
+
+const cookie = "00D876ADF29B81402C2A73AC85D4F98666823CEAA9CAD2C2657FE212F91B86E59809DBE7A74801FA69C202AE552DA8204A47D565644BBEDE14D7D43984BF73E18DDDFE77DF1D6135735B4255E3760B59B0689A361E45ADAE406E0933A037EAC84015746B6A7534E337C6B6828B37BF9E909BCCC23E80FDD68294E1E685D34A1074BA20AB3DD886EFBC715464EA94699F81BD80C5A64957316458A46EE129A664FACD497E54AEB1C0087CCD8DD994FE6275575303D9626FA38A4D83AACFCD66FD8CB7D12A62F9FB24E03D3C7DE17447DB02408FF1170111E8657C7F00772B669D1E1A399B78AB2D064B590F9A0655A76F3D3054702F74959EB8B925E4F9F7699DC36458E5767B14001F08D0E0226AFDE983AC58BC88B92B9ADF3A0ECF87D4A8B998F19538D1D6D61B409DB41E9C31C452C4B20B924C587FC4B6ADAA35E9885AC7E94E526BD1BD9153C64EB2233E7D7DEA605FD94CAC8AA6BC32246DBE25D8F140BAFF667C9EE9337C5FD51984BA72FDEC70E9B3AE77AB9A6F32BB714E4BFE15E9BA8987C8E5B87342382D65E7C30A33E263";
+
+const formatNeteaseCookie = (cookie) => {
+    let final = cookie.trim();
+    if (!final.includes('MUSIC_U=') && !final.includes('=')) {
+        final = `MUSIC_U=${final}`;
+    }
+    if (!final.endsWith(';')) {
+        final += ';';
+    }
+    return final;
+};
+
+async function testSong(id) {
+    const formattedCookie = formatNeteaseCookie(cookie);
+    console.log(`\n--- Full Data for Song ID: ${id} ---`);
+    
+    try {
+        const res = await song_url_v1({
+            id,
+            level: 'exhigh',
+            cookie: formattedCookie,
+            os: 'pc',
+            realIP: '116.25.146.177'
+        });
+        const data = res.body.data[0];
+        console.log(JSON.stringify(data, null, 2));
+    } catch (e) {
+        console.log(`Error: ${e.message}`);
+    }
+}
+
+(async () => {
+    await testSong('27591236');
+})();

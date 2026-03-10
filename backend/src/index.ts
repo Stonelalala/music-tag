@@ -14,19 +14,39 @@ dotenv.config();
 
 // Ensure config / DB path exist
 const dataDir = process.env.DATA_DIR || path.join(__dirname, '../../config');
+console.log(`[Config] Data directory: ${dataDir}`);
 if (!fs.existsSync(dataDir)) {
+    console.log(`[Config] Creating data directory: ${dataDir}`);
     fs.mkdirSync(dataDir, { recursive: true });
 }
 
 import { db } from './db';
 import { scanLibrary } from './scanner';
-import { processPendingTracks, searchITunes, searchNetease, searchQQMusic, fetchNeteaseLyrics, fetchLyrics } from './scraper';
+import {
+    processPendingTracks,
+    searchNetease,
+    searchITunes,
+    searchQQMusic,
+    searchKugou,
+    searchKuwo,
+    fetchNeteaseLyrics,
+    fetchLyrics,
+    fetchQQMusicLyrics
+} from './scraper';
+import { downloadAndTagKugouSong } from './kugou';
+import { downloadAndTagKuwoSong } from './kuwo';
 
 const app = express();
-const PORT = process.env.PORT || 8002;
-const MUSIC_DIR = process.env.MUSIC_DIR || path.join(__dirname, '../../examples'); // Default fallback for tests
 
-const upload = multer({ storage: multer.memoryStorage() }); // Multer initialization
+app.use((req, res, next) => {
+    console.log(`[Request] ${req.method} ${req.url}`);
+    next();
+});
+
+const PORT = process.env.PORT || 8002;
+const MUSIC_DIR = process.env.MUSIC_DIR || path.join(__dirname, '../../examples');
+
+const upload = multer({ storage: multer.memoryStorage() });
 
 app.use(cors());
 app.use(express.json());
@@ -235,6 +255,36 @@ app.get('/api/discovery/albums', (req, res) => {
         res.status(500).json({ success: false, error: e.message });
     }
 });
+// Discovery: Play History
+app.post('/api/tracks/:id/play', (req, res) => {
+    try {
+        const { id } = req.params;
+        db.prepare('INSERT INTO play_history (track_id) VALUES (?)').run(id);
+        res.json({ success: true });
+    } catch (e: any) {
+        res.status(500).json({ success: false, error: e.message });
+    }
+});
+
+app.get('/api/history', (req, res) => {
+    try {
+        const limit = parseInt(req.query.limit as string) || 50;
+        // Join with tracks to get full info, and use DISTINCT/GROUP BY to avoid duplicates of the SAME song showing up 10 times in a row if desired, 
+        // but usually history shows every play. Let's show unique latest plays of each song for a cleaner list, or just raw history.
+        // User said "History", usually raw history is fine.
+        const rows = db.prepare(`
+            SELECT h.id as history_id, h.played_at, t.* 
+            FROM play_history h 
+            JOIN tracks t ON h.track_id = t.id 
+            ORDER BY h.played_at DESC 
+            LIMIT ?
+        `).all(limit) as any[];
+        res.json({ success: true, data: rows });
+    } catch (e: any) {
+        res.status(500).json({ success: false, error: e.message });
+    }
+});
+
 app.post('/api/tracks/organize', (req, res) => {
     try {
         const { levels } = req.body;
@@ -571,6 +621,10 @@ app.get('/api/search-metadata', async (req, res) => {
             results = await searchITunes(query);
         } else if (source === 'qq') {
             results = await searchQQMusic(query);
+        } else if (source === 'kugou') {
+            results = await searchKugou(query);
+        } else if (source === 'kuwo') {
+            results = await searchKuwo(query);
         } else {
             // Netease acts as fallback for 'netease', 'spotify' placeholders
             results = await searchNetease(query);
@@ -578,6 +632,39 @@ app.get('/api/search-metadata', async (req, res) => {
 
         res.json({ success: true, results });
     } catch (e: any) {
+        res.status(500).json({ success: false, error: e.message });
+    }
+});
+
+app.get('/api/lyrics/search-web', async (req, res) => {
+    try {
+        const title = req.query.title as string;
+        const artist = req.query.artist as string || '';
+        const source = req.query.source as string;
+        const id = req.query.id as string;
+
+        console.log(`[Lyrics] Web search requested: source=${source}, id=${id}, title=${title}`);
+
+        let lyrics: string | null = null;
+
+        // Try specific source first if ID is provided
+        if (id && source === 'netease') {
+            const { fetchNeteaseLyric } = await import('./netease.js');
+            lyrics = await fetchNeteaseLyric(id);
+        } else if (id && source === 'qq') {
+            lyrics = await fetchQQMusicLyrics(id);
+        }
+
+        // Fallback to generic LRCLIB search
+        if (!lyrics && title) {
+            console.log(`[Lyrics] Source-specific fetch failed or not applicable, falling back to LRCLIB: ${title}`);
+            lyrics = await fetchLyrics(title, artist);
+        }
+
+        console.log(`[Lyrics] Result: ${lyrics ? 'Found (' + lyrics.substring(0, 30) + '...)' : 'Not found'}`);
+        res.json({ success: true, lyrics });
+    } catch (e: any) {
+        console.error(`[Lyrics] Search failed:`, e);
         res.status(500).json({ success: false, error: e.message });
     }
 });
@@ -647,10 +734,11 @@ const getStoredConfig = () => {
     try {
         const configPath = path.join(dataDir, 'settings.json');
         if (fs.existsSync(configPath)) {
-            return JSON.parse(fs.readFileSync(configPath, 'utf8'));
+            const config = JSON.parse(fs.readFileSync(configPath, 'utf8'));
+            return config;
         }
     } catch (e) {
-        console.error('Failed to read config file', e);
+        console.error('[Config] Failed to read config file', e);
     }
     return {};
 };
@@ -688,7 +776,8 @@ app.get('/api/netease/recommend/songs', async (req, res) => {
 app.get('/api/netease/playlist/:id', async (req, res) => {
     try {
         const id = req.params.id;
-        const data = await fetchNeteasePlaylist(id);
+        const cookie = req.query.cookie as string || getStoredConfig().neteaseCookie || '';
+        const data = await fetchNeteasePlaylist(id, cookie);
         if (data) {
             res.json({ success: true, data });
         } else {
@@ -701,8 +790,12 @@ app.get('/api/netease/playlist/:id', async (req, res) => {
 
 app.post('/api/netease/parse', async (req, res) => {
     try {
-        const { url, level = 'exhigh', cookie = '' } = req.body;
+        let { url, level = 'exhigh', cookie = '' } = req.body;
         if (!url) return res.status(400).json({ success: false, error: 'No URL provided' });
+
+        if (!cookie) {
+            cookie = getStoredConfig().neteaseCookie || '';
+        }
 
         const parsed = await parseNeteaseUrl(url);
 
@@ -747,7 +840,7 @@ app.post('/api/netease/parse', async (req, res) => {
                 }]
             });
         } else if (parsed.type === 'playlist') {
-            const playlist = await fetchNeteasePlaylist(parsed.id);
+            const playlist = await fetchNeteasePlaylist(parsed.id, cookie);
             if (!playlist) return res.status(404).json({ success: false, error: 'Playlist not found' });
 
             res.json({
@@ -768,7 +861,10 @@ app.post('/api/netease/parse', async (req, res) => {
 
 app.post('/api/netease/download', async (req, res) => {
     try {
-        const { id, level = 'exhigh', cookie = '', isPlaylist = false, name = '', trackIds = [] } = req.body;
+        let { id, level = 'exhigh', cookie = '', isPlaylist = false, name = '', trackIds = [] } = req.body;
+        if (!cookie) {
+            cookie = getStoredConfig().neteaseCookie || '';
+        }
         if (!id && (!isPlaylist || trackIds.length === 0)) {
             return res.status(400).json({ success: false, error: 'ID or trackIds list is required' });
         }
@@ -780,7 +876,7 @@ app.post('/api/netease/download', async (req, res) => {
                     taskManager.updateTask(mainTaskId, { status: 'running', progress: 0 });
                     let finalTrackIds = trackIds;
                     if (finalTrackIds.length === 0) {
-                        const playlist = await fetchNeteasePlaylist(id);
+                        const playlist = await fetchNeteasePlaylist(id, cookie);
                         if (!playlist || !playlist.trackIds) throw new Error('Could not fetch playlist details');
                         finalTrackIds = playlist.trackIds;
                     }
@@ -802,6 +898,8 @@ app.post('/api/netease/download', async (req, res) => {
                         }
                         taskManager.updateTask(mainTaskId, { progress: Math.round(((i + 1) / total) * 100) });
                     }
+                    try { await scanLibrary(MUSIC_DIR, mainTaskId); } catch (e) { console.error('Auto scan failed:', e); }
+                    try { await processPendingTracks(mainTaskId); } catch (e) { console.error('Auto scrape failed:', e); }
                     taskManager.updateTask(mainTaskId, { status: 'completed', progress: 100 });
                 } catch (err: any) {
                     taskManager.updateTask(mainTaskId, { status: 'failed', message: err.message });
@@ -814,6 +912,8 @@ app.post('/api/netease/download', async (req, res) => {
                 try {
                     taskManager.updateTask(taskId, { status: 'running', progress: 10 });
                     await downloadAndTagNeteaseSong(id, MUSIC_DIR, db, level, cookie, taskId);
+                    try { await scanLibrary(MUSIC_DIR, taskId); } catch (e) { console.error('Auto scan failed:', e); }
+                    try { await processPendingTracks(taskId); } catch (e) { console.error('Auto scrape failed:', e); }
                     taskManager.updateTask(taskId, { status: 'completed', progress: 100 });
                 } catch (err: any) {
                     taskManager.updateTask(taskId, { status: 'failed', message: err.message });
@@ -846,7 +946,51 @@ app.post('/api/qq/download', async (req, res) => {
         (async () => {
             try {
                 taskManager.updateTask(taskId, { status: 'running', progress: 10 });
-                await downloadAndTagQQMusicSong(MUSIC_DIR, id, level, cookie);
+                await downloadAndTagQQMusicSong(MUSIC_DIR, id, level, cookie, taskId);
+                try { await scanLibrary(MUSIC_DIR, taskId); } catch (e) { console.error('Auto scan failed:', e); }
+                try { await processPendingTracks(taskId); } catch (e) { console.error('Auto scrape failed:', e); }
+                taskManager.updateTask(taskId, { status: 'completed', progress: 100 });
+            } catch (err: any) {
+                taskManager.updateTask(taskId, { status: 'failed', message: err.message });
+            }
+        })();
+        res.json({ success: true, taskId });
+    } catch (e: any) {
+        res.status(500).json({ success: false, error: e.message });
+    }
+});
+
+app.post('/api/kugou/download', async (req, res) => {
+    try {
+        const { id, level = 'exhigh' } = req.body;
+        const taskId = taskManager.createTask('download_kugou', `Downloading Kugou song ${id}`, { id, level });
+        (async () => {
+            try {
+                taskManager.updateTask(taskId, { status: 'running', progress: 10 });
+                await downloadAndTagKugouSong(MUSIC_DIR, id, level, taskId);
+                try { await scanLibrary(MUSIC_DIR, taskId); } catch (e) { console.error('Auto scan failed:', e); }
+                try { await processPendingTracks(taskId); } catch (e) { console.error('Auto scrape failed:', e); }
+                taskManager.updateTask(taskId, { status: 'completed', progress: 100 });
+            } catch (err: any) {
+                taskManager.updateTask(taskId, { status: 'failed', message: err.message });
+            }
+        })();
+        res.json({ success: true, taskId });
+    } catch (e: any) {
+        res.status(500).json({ success: false, error: e.message });
+    }
+});
+
+app.post('/api/kuwo/download', async (req, res) => {
+    try {
+        const { id, level = 'exhigh' } = req.body;
+        const taskId = taskManager.createTask('download_kuwo', `Downloading Kuwo song ${id}`, { id, level });
+        (async () => {
+            try {
+                taskManager.updateTask(taskId, { status: 'running', progress: 10 });
+                await downloadAndTagKuwoSong(MUSIC_DIR, id, level, taskId);
+                try { await scanLibrary(MUSIC_DIR, taskId); } catch (e) { console.error('Auto scan failed:', e); }
+                try { await processPendingTracks(taskId); } catch (e) { console.error('Auto scrape failed:', e); }
                 taskManager.updateTask(taskId, { status: 'completed', progress: 100 });
             } catch (err: any) {
                 taskManager.updateTask(taskId, { status: 'failed', message: err.message });

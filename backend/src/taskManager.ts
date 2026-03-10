@@ -1,7 +1,7 @@
 import { db } from './db';
 import crypto from 'crypto';
 
-export type TaskType = 'scan' | 'scrape' | 'download_netease' | 'download_qq' | 'organize' | 'rename' | 'playlist_import';
+export type TaskType = 'scan' | 'scrape' | 'download_netease' | 'download_qq' | 'download_kugou' | 'download_kuwo' | 'organize' | 'rename' | 'playlist_import';
 export type TaskStatus = 'pending' | 'running' | 'completed' | 'failed' | 'cancelled';
 
 export interface Task {

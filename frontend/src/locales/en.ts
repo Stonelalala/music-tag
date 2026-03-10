@@ -36,7 +36,7 @@ export default {
         subtitle: 'Please authenticate to manage your music library',
         username: 'Username',
         password: 'Password',
-        submit: 'Login Now',
+        submit: 'Enter Home',
         logging_in: 'Authenticating...'
     },
 
@@ -48,7 +48,7 @@ export default {
 
     // Track List & Details
     tab_dashboard: 'Dashboard',
-    tab_discovery: 'Discovery',
+    tab_discovery: 'Home',
     tab_tracks: 'Library',
     col_file: 'Filename',
     col_title: 'Title',

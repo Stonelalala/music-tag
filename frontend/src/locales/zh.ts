@@ -36,7 +36,7 @@ export default {
         subtitle: '请验证您的身份以继续管理音乐库',
         username: '用户名',
         password: '密码',
-        submit: '立即进入曲库',
+        submit: '立即进入首页',
         logging_in: '正在验证身份...'
     },
 
@@ -48,7 +48,7 @@ export default {
 
     // Track List & Details
     tab_dashboard: '控制看板',
-    tab_discovery: '发现与推荐',
+    tab_discovery: '首页',
     tab_tracks: '音乐库列表',
     col_file: '文件名',
     col_title: '标题',

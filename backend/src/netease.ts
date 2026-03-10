@@ -1,10 +1,57 @@
 import { song_detail, song_url_v1, playlist_detail, lyric, recommend_resource, recommend_songs, personalized } from 'NeteaseCloudMusicApi';
+const OpenCC = require('opencc-js');
+const converter = OpenCC.Converter({ from: 't', to: 'cn' });
+const t2s = (text: string | undefined | null) => text ? converter(text) : '';
+
+const formatNeteaseCookie = (cookie: string) => {
+    if (!cookie) return '';
+    const cleaned = cookie.trim();
+
+    // Split into segments by semicolon or newline to handle various copy-paste formats
+    const segments = cleaned.split(/[\n;]/).map(s => s.trim()).filter(s => s);
+    const pairs: string[] = [];
+    const seenKeys = new Set<string>();
+
+    segments.forEach(seg => {
+        // Try to match Key=Value, Key: Value, or Key Value (common in browser tables)
+        const match = seg.match(/^([a-zA-Z0-9_%-]+)[:=\s]+(.+)$/);
+        if (match && match[1] && match[2]) {
+            const key = match[1].trim().replace(/:$/, '');
+            const value = match[2].trim();
+
+            if (!seenKeys.has(key)) {
+                pairs.push(`${key}=${value}`);
+                seenKeys.add(key);
+            }
+        }
+    });
+
+    if (pairs.length > 0) {
+        return pairs.join('; ') + ';';
+    }
+
+    // Fallback for single long hex token (just MUSIC_U)
+    if (cleaned.length > 64 && !cleaned.includes('=') && !cleaned.includes(' ')) {
+        return `MUSIC_U=${cleaned};`;
+    }
+
+    // Final ensuring of semicolon
+    let final = cleaned;
+    if (!final.includes('MUSIC_U=') && !final.includes('=')) {
+        final = `MUSIC_U=${final}`;
+    }
+    if (!final.endsWith(';')) {
+        final += ';';
+    }
+    return final;
+};
 
 export async function fetchNeteaseRecommendPlaylists(cookie: string) {
+    const formattedCookie = formatNeteaseCookie(cookie);
     let items: any[] = [];
     try {
         // 1. Try Personalized (usually returns ~30 items, works even with guest/partial cookie)
-        const resP = await personalized({ cookie, limit: 30 });
+        const resP = await personalized({ cookie: formattedCookie, limit: 30 });
         if (resP.status === 200 && (resP.body as any).result) {
             items = (resP.body as any).result.map((r: any) => ({
                 id: r.id,
@@ -16,7 +63,7 @@ export async function fetchNeteaseRecommendPlaylists(cookie: string) {
         }
 
         // 2. Try Recommend Resource (official daily recommendation, requires strict music_u login)
-        const resR = await recommend_resource({ cookie });
+        const resR = await recommend_resource({ cookie: formattedCookie });
         if (resR.status === 200 && (resR.body as any).recommend) {
             const dailies = (resR.body as any).recommend.map((r: any) => ({
                 id: r.id,
@@ -37,8 +84,9 @@ export async function fetchNeteaseRecommendPlaylists(cookie: string) {
 }
 
 export async function fetchNeteaseRecommendSongs(cookie: string) {
+    const formattedCookie = formatNeteaseCookie(cookie);
     try {
-        const res = await recommend_songs({ cookie });
+        const res = await recommend_songs({ cookie: formattedCookie });
         const data = (res.body as any).data;
         if (res.status === 200 && data && data.dailySongs) {
             return data.dailySongs.map((song: any) => ({
@@ -63,9 +111,6 @@ import NodeID3 from 'node-id3';
 import crypto from 'crypto';
 import type { Database } from 'better-sqlite3';
 
-const OpenCC = require('opencc-js');
-const converter = OpenCC.Converter({ from: 't', to: 'cn' });
-const t2s = (text: string | undefined | null) => text ? converter(text) : '';
 
 export async function parseNeteaseUrl(url: string) {
     let type = '';
@@ -111,9 +156,10 @@ export async function fetchNeteaseSongDetail(id: number | string) {
     return null;
 }
 
-export async function fetchNeteasePlaylist(id: number | string) {
+export async function fetchNeteasePlaylist(id: number | string, cookie: string = '') {
+    const formattedCookie = formatNeteaseCookie(cookie);
     try {
-        const res = await playlist_detail({ id: id.toString() });
+        const res = await playlist_detail({ id: id.toString(), cookie: formattedCookie });
         const playlist = (res.body as any).playlist;
         if (res.status === 200 && playlist) {
             return {
@@ -156,7 +202,16 @@ async function fetchFallbackAudioUrl(id: number | string, title: string, artist:
     };
 }
 
+
 export async function fetchNeteaseDownloadUrl(id: number | string, level: string = 'exhigh', cookie: string = '') {
+    const formattedCookie = formatNeteaseCookie(cookie);
+    console.log(`[Netease API] Target ID: ${id}, Cookie present in args: ${!!cookie}, Formatted length: ${formattedCookie.length}`);
+    if (formattedCookie) {
+        const keysFound = formattedCookie.match(/([a-zA-Z0-9_%-]+)=/g)?.map(k => k.replace('=', '')) || [];
+        const fingerprint = formattedCookie.substring(0, 15) + '...';
+        console.log(`[Netease API] Cookie Keys: ${keysFound.join(', ')} | Fingerprint: ${fingerprint}`);
+    }
+
     const levels = ['jymaster', 'hires', 'lossless', 'exhigh', 'higher', 'standard'];
     let startIndex = levels.indexOf(level);
     if (startIndex === -1) startIndex = 3; // default exhigh
@@ -164,33 +219,43 @@ export async function fetchNeteaseDownloadUrl(id: number | string, level: string
     // 尝试阶梯式降级请求，直到拿到真实的 URL
     for (let i = startIndex; i < levels.length; i++) {
         const currentLevel = levels[i];
-        try {
-            const params: any = { id: id.toString(), level: currentLevel as any };
-            if (cookie) params.cookie = cookie;
+        // Rotate platforms: Some VIP songs require PC, others work on Linux/Android
+        const platforms = ['pc', 'android', 'linux'];
 
-            const res = await song_url_v1(params);
-            if (res.status === 200 && (res.body as any).data && Array.isArray((res.body as any).data)) {
-                const data = (res.body as any).data[0];
+        for (const platform of platforms) {
+            try {
+                const params: any = {
+                    id: id.toString(),
+                    level: currentLevel as any,
+                    os: platform as any,
+                    realIP: '116.25.146.177' // China SZ IP to avoid region block
+                };
+                if (formattedCookie) params.cookie = formattedCookie;
 
-                // 如果有 URL 且不是试听版
-                if (data.url && !data.freeTrialInfo && data.freeTimeTrialPrivilege?.resConsumable !== false) {
-                    console.log(`[Netease API] Hit! Level: ${currentLevel}, Real Level: ${data.level}`);
-                    return {
-                        url: data.url,
-                        size: data.size,
-                        type: data.type || 'mp3',
-                        level: data.level
-                    };
+                const res = await song_url_v1(params);
+                if (res.status === 200 && (res.body as any).data && Array.isArray((res.body as any).data)) {
+                    const data = (res.body as any).data[0];
+                    if (!data.url) {
+                        console.log(`[Netease API] No URL for ID:${id} [${platform}/${currentLevel}]. Code:${data.code} Fee:${data.fee}`);
+                    }
+
+                    if (data.url && !data.freeTrialInfo && data.code !== 404) {
+                        console.log(`[Netease API] Success! [${platform}/${currentLevel}] Fee:${data.fee} Code:${data.code}`);
+                        return {
+                            url: data.url,
+                            size: data.size,
+                            type: data.type || 'mp3',
+                            level: data.level
+                        };
+                    }
                 }
-            }
-        } catch (e) {
-            console.error(`Fetch netease song url failed at level ${currentLevel}:`, e);
+            } catch (ignore) { }
         }
     }
 
-    // 如果原生所有等级都失败，不再返回空，而是尝试跨站构造 320k 高音质代理链接
-    // 优先使用对直连鉴权较宽松的镜像节点
-    console.warn(`[Netease: Safe-Proxy] 启动 320kbps 高质量镜像通道 ID:${id}`);
+    console.warn(`[Netease API] Song ${id} authorized check failed on all platforms/levels. (Cookie might be invalid or restricted)`);
+    // Fallback to basic proxy channel (will return 320k if possible)
+    console.warn(`[Netease: Safe-Proxy] Triggering Mirror Node fallback for ID:${id}`);
     return {
         url: `https://api.injahow.cn/meting/?server=netease&type=url&id=${id}&br=320`,
         size: 0,
@@ -459,12 +524,33 @@ export async function downloadAndTagNeteaseSong(id: number | string, musicDir: s
             const crypto = require('crypto');
             const trackId = crypto.randomUUID ? crypto.randomUUID() : crypto.randomBytes(16).toString('hex');
             db.prepare(`
-                 INSERT INTO tracks (id, filepath, filename, extension, title, artist, album, scrape_status) 
-                 VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-             `).run(trackId, filepath, filename, ext, detail.title, detail.artist, detail.album, scrapeStatus);
+                 INSERT INTO tracks (id, filepath, filename, extension, title, artist, album, bitrate, duration, size, scrape_status) 
+                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+             `).run(
+                trackId,
+                filepath,
+                filename,
+                ext,
+                detail.title,
+                detail.artist,
+                detail.album,
+                probeResult.bitrate || 0,
+                detail.duration || 0,
+                finalStats.size,
+                scrapeStatus
+            );
         } else {
-            db.prepare('UPDATE tracks SET title=?, artist=?, album=?, scrape_status=?, updated_at=CURRENT_TIMESTAMP WHERE id=?')
-                .run(detail.title, detail.artist, detail.album, scrapeStatus, (existing as any).id);
+            db.prepare('UPDATE tracks SET title=?, artist=?, album=?, bitrate=?, duration=?, size=?, scrape_status=?, updated_at=CURRENT_TIMESTAMP WHERE id=?')
+                .run(
+                    detail.title,
+                    detail.artist,
+                    detail.album,
+                    probeResult.bitrate || 0,
+                    detail.duration || 0,
+                    finalStats.size,
+                    scrapeStatus,
+                    (existing as any).id
+                );
         }
 
         return { success: true, filepath, detail, ext };

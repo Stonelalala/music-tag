@@ -31,7 +31,7 @@ export async function scanLibrary(musicDir: string, taskId?: string) {
     `);
 
     const updateTechnicalMeta = db.prepare(`
-        UPDATE tracks SET size = @size
+        UPDATE tracks SET size = @size, bitrate = @bitrate, sample_rate = @sample_rate, duration = @duration
         WHERE filepath = @filepath
     `);
 
@@ -87,10 +87,19 @@ export async function scanLibrary(musicDir: string, taskId?: string) {
                     } else {
                         try {
                             const stats = fs.statSync(fullPath);
-                            updateTechnicalMeta.run({
-                                size: stats.size,
-                                filepath: fullPath
-                            });
+                            // Only re-parse metadata if essential technical info is missing
+                            const trackInfo = db.prepare('SELECT duration, bitrate, size FROM tracks WHERE filepath = ?').get(fullPath) as any;
+
+                            if (!trackInfo || !trackInfo.duration || !trackInfo.bitrate || trackInfo.size !== stats.size) {
+                                const metadata = await mm.parseFile(fullPath);
+                                updateTechnicalMeta.run({
+                                    size: stats.size,
+                                    bitrate: metadata.format.bitrate || 0,
+                                    sample_rate: metadata.format.sampleRate || 0,
+                                    duration: metadata.format.duration || 0,
+                                    filepath: fullPath
+                                });
+                            }
                         } catch (err) {
                             // Silent skip
                         }

@@ -63,6 +63,14 @@ db.exec(`
   CREATE INDEX IF NOT EXISTS idx_tracks_filepath ON tracks(filepath);
   CREATE INDEX IF NOT EXISTS idx_tracks_status ON tracks(scrape_status);
   CREATE INDEX IF NOT EXISTS idx_users_username ON users(username);
+
+  CREATE TABLE IF NOT EXISTS play_history (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    track_id TEXT NOT NULL REFERENCES tracks(id) ON DELETE CASCADE,
+    played_at DATETIME DEFAULT CURRENT_TIMESTAMP
+  );
+  CREATE INDEX IF NOT EXISTS idx_play_history_track ON play_history(track_id);
+  CREATE INDEX IF NOT EXISTS idx_play_history_time ON play_history(played_at);
 `);
 
 // Default admin user check & initial

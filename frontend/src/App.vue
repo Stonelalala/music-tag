@@ -147,8 +147,8 @@
             <h3 class="px-4 text-[10px] font-black text-slate-500 uppercase tracking-[0.3em]">Core</h3>
             <ul class="space-y-2">
               <li v-for="nav in [
-                { id: 'library', icon: 'M3 3h7v7H3zm11 0h7v7h-7zm0 11h7v7h-7zm-11 0h7v7H3z', label: t('tab_tracks'), color: 'emerald' },
                 { id: 'discovery', icon: 'M12 2a10 10 0 1 0 10 10A10 10 0 0 0 12 2zm4 6-8 8m4 0h-4v-4', label: t('tab_discovery'), color: 'rose' },
+                { id: 'library', icon: 'M3 3h7v7H3zm11 0h7v7h-7zm0 11h7v7h-7zm-11 0h7v7H3z', label: t('tab_tracks'), color: 'emerald' },
                 { id: 'tasks', icon: 'M12 2v20m5-5-5 5-5-5m0-10 5-5 5 5', label: t('tasks.title'), color: 'emerald' }
               ]" :key="nav.id">
                 <button 
@@ -367,7 +367,7 @@ const handleLogin = async () => {
 };
 
 // App Tabbing
-const currentTab = ref('library'); // 'library' | 'discovery' | 'tasks'
+const currentTab = ref('discovery'); // 'library' | 'discovery' | 'tasks'
 const isSidebarOpen = ref(false);
 const activeTaskCount = ref(0);
 

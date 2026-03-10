@@ -138,8 +138,14 @@ export async function fetchNeteaseLyrics(songId: number) {
 export async function fetchQQMusicMetadata(title: string, artist: string) {
     try {
         const term = encodeURIComponent(`${title} ${artist}`);
-        const searchUrl = `https://c.y.qq.com/soso/fcgi-bin/client_search_cp?p=1&n=1&w=${term}&format=json`;
-        const searchRes = await axios.get(searchUrl, { timeout: 7000 });
+        const searchUrl = `https://c.y.qq.com/soso/fcgi-bin/search_for_qq_cp?p=1&n=5&w=${term}&format=json&aggr=1&cr=1`;
+        const searchRes = await axios.get(searchUrl, {
+            timeout: 7000,
+            headers: {
+                'Referer': 'https://y.qq.com/',
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
+            }
+        });
         const song = searchRes.data?.data?.song?.list?.[0];
 
         if (song) {
@@ -180,8 +186,14 @@ export async function fetchQQMusicLyrics(songMid: string) {
 export async function searchQQMusic(query: string) {
     try {
         const term = encodeURIComponent(query);
-        const searchUrl = `https://c.y.qq.com/soso/fcgi-bin/client_search_cp?p=1&n=15&w=${term}&format=json`;
-        const searchRes = await axios.get(searchUrl, { timeout: 7000 });
+        const searchUrl = `https://c.y.qq.com/soso/fcgi-bin/search_for_qq_cp?p=1&n=20&w=${term}&format=json&aggr=1&cr=1`;
+        const searchRes = await axios.get(searchUrl, {
+            timeout: 7000,
+            headers: {
+                'Referer': 'https://y.qq.com/',
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
+            }
+        });
         const songs = searchRes.data?.data?.song?.list || [];
 
         return songs.map((song: any) => ({
@@ -193,6 +205,53 @@ export async function searchQQMusic(query: string) {
             coverUrl: song.albummid ? `https://y.gtimg.cn/music/photo_new/T002R300x300M000${song.albummid}.jpg` : null
         }));
     } catch (e: any) { return []; }
+}
+
+export async function searchKugou(query: string) {
+    try {
+        const term = encodeURIComponent(query);
+        const searchUrl = `http://mobilecdn.kugou.com/api/v3/search/song?format=json&keyword=${term}&page=1&pagesize=20&showtype=1`;
+        const searchRes = await axios.get(searchUrl, {
+            timeout: 10000,
+            headers: {
+                'User-Agent': 'Mozilla/5.0 (iPhone; CPU iPhone OS 13_2_3 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/13.0.3 Mobile/15E148 Safari/604.1'
+            }
+        });
+        const songs = searchRes.data?.data?.info || [];
+
+        return songs.map((song: any) => ({
+            id: song.hash,
+            title: t2s(song.songname || ''),
+            artist: t2s(song.singername || ''),
+            album: t2s(song.album_name || ''),
+            year: undefined,
+            coverUrl: null // Kugou preview covers from simple search are unreliable, fallback to scraper later
+        }));
+    } catch (e: any) { return []; }
+}
+
+export async function searchKuwo(query: string) {
+    try {
+        const term = encodeURIComponent(query);
+        const searchUrl = `http://search.kuwo.cn/r.s?client=kt&all=${term}&pn=0&rn=15&rformat=json&encoding=utf8`;
+        const searchRes = await axios.get(searchUrl, { timeout: 10000 });
+        // Kuwo response is a string like " { ... } ", we need to parse it
+        const dataStr = searchRes.data.replace(/'/g, '"').replace(/&nbsp;/g, ' ');
+        const data = JSON.parse(dataStr);
+        const songs = data.abslist || [];
+
+        return songs.map((song: any) => ({
+            id: song.MUSICRID.replace('MUSIC_', ''),
+            title: t2s(song.SONGNAME || ''),
+            artist: t2s(song.ARTIST || ''),
+            album: t2s(song.ALBUM || ''),
+            year: undefined,
+            coverUrl: song.web_albumpic_short ? `http://img1.kuwo.cn/star/albumcover/${song.web_albumpic_short}` : null
+        }));
+    } catch (e: any) {
+        console.error('Kuwo search failed', e);
+        return [];
+    }
 }
 
 import { taskManager } from './taskManager';
