@@ -75,6 +75,12 @@ const authenticate = (req: any, res: any, next: any) => {
 
 app.use('/api', authenticate);
 
+const getUserId = (req: any) => (req as any).user?.id as string;
+
+const ensureTrackExists = (trackId: string) => {
+    return db.prepare('SELECT * FROM tracks WHERE id = ?').get(trackId) as any;
+};
+
 // Auth Routes
 app.post('/api/auth/login', (req, res) => {
     const { username, password } = req.body;
@@ -218,10 +224,348 @@ app.get('/api/tracks', (req, res) => {
     }
 });
 
+app.post('/api/tracks/:id/play', (req, res) => {
+    try {
+        const trackId = req.params.id;
+        const userId = getUserId(req);
+        const track = ensureTrackExists(trackId);
+        if (!track) {
+            return res.status(404).json({ success: false, error: 'Track not found' });
+        }
+
+        db.prepare(
+            'INSERT INTO play_history (user_id, track_id) VALUES (?, ?)'
+        ).run(userId, trackId);
+
+        res.json({ success: true });
+    } catch (e: any) {
+        res.status(500).json({ success: false, error: e.message });
+    }
+});
+
+app.get('/api/history', (req, res) => {
+    try {
+        const userId = getUserId(req);
+        const limit = Math.min(parseInt(req.query.limit as string) || 50, 200);
+        const rows = db.prepare(`
+            SELECT t.*, h.played_at as last_played_at
+            FROM play_history h
+            JOIN tracks t ON t.id = h.track_id
+            WHERE h.user_id = ?
+              AND h.id IN (
+                SELECT MAX(id)
+                FROM play_history
+                WHERE user_id = ?
+                GROUP BY track_id
+              )
+            ORDER BY h.played_at DESC
+            LIMIT ?
+        `).all(userId, userId, limit) as any[];
+        res.json({ success: true, data: rows });
+    } catch (e: any) {
+        res.status(500).json({ success: false, error: e.message });
+    }
+});
+
+app.get('/api/play-stats', (req, res) => {
+    try {
+        const userId = getUserId(req);
+        const totalPlays = (db.prepare(
+            'SELECT COUNT(*) as count FROM play_history WHERE user_id = ?'
+        ).get(userId) as any).count as number;
+        const uniqueTracks = (db.prepare(
+            'SELECT COUNT(DISTINCT track_id) as count FROM play_history WHERE user_id = ?'
+        ).get(userId) as any).count as number;
+        const favoriteTracks = (db.prepare(
+            'SELECT COUNT(*) as count FROM favorites WHERE user_id = ?'
+        ).get(userId) as any).count as number;
+        const playlists = (db.prepare(
+            'SELECT COUNT(*) as count FROM playlists WHERE user_id = ?'
+        ).get(userId) as any).count as number;
+
+        const topTracks = db.prepare(`
+            SELECT t.*, COUNT(h.id) as play_count, MAX(h.played_at) as last_played_at
+            FROM play_history h
+            JOIN tracks t ON t.id = h.track_id
+            WHERE h.user_id = ?
+            GROUP BY h.track_id
+            ORDER BY play_count DESC, last_played_at DESC
+            LIMIT 10
+        `).all(userId) as any[];
+
+        res.json({
+            success: true,
+            data: {
+                totalPlays,
+                uniqueTracks,
+                favoriteTracks,
+                playlists,
+                topTracks,
+            }
+        });
+    } catch (e: any) {
+        res.status(500).json({ success: false, error: e.message });
+    }
+});
+
+app.get('/api/favorites', (req, res) => {
+    try {
+        const userId = getUserId(req);
+        const rows = db.prepare(`
+            SELECT t.*, f.created_at as favorited_at
+            FROM favorites f
+            JOIN tracks t ON t.id = f.track_id
+            WHERE f.user_id = ?
+            ORDER BY f.created_at DESC
+        `).all(userId) as any[];
+        res.json({ success: true, data: rows });
+    } catch (e: any) {
+        res.status(500).json({ success: false, error: e.message });
+    }
+});
+
+app.get('/api/favorites/:trackId/status', (req, res) => {
+    try {
+        const userId = getUserId(req);
+        const trackId = req.params.trackId;
+        const favorite = db.prepare(
+            'SELECT 1 FROM favorites WHERE user_id = ? AND track_id = ?'
+        ).get(userId, trackId);
+        res.json({ success: true, data: { isFavorite: !!favorite } });
+    } catch (e: any) {
+        res.status(500).json({ success: false, error: e.message });
+    }
+});
+
+app.post('/api/favorites/:trackId', (req, res) => {
+    try {
+        const userId = getUserId(req);
+        const trackId = req.params.trackId;
+        const track = ensureTrackExists(trackId);
+        if (!track) {
+            return res.status(404).json({ success: false, error: 'Track not found' });
+        }
+
+        db.prepare(
+            'INSERT OR IGNORE INTO favorites (user_id, track_id) VALUES (?, ?)'
+        ).run(userId, trackId);
+        res.json({ success: true });
+    } catch (e: any) {
+        res.status(500).json({ success: false, error: e.message });
+    }
+});
+
+app.delete('/api/favorites/:trackId', (req, res) => {
+    try {
+        const userId = getUserId(req);
+        const trackId = req.params.trackId;
+        db.prepare(
+            'DELETE FROM favorites WHERE user_id = ? AND track_id = ?'
+        ).run(userId, trackId);
+        res.json({ success: true });
+    } catch (e: any) {
+        res.status(500).json({ success: false, error: e.message });
+    }
+});
+
+app.get('/api/playlists', (req, res) => {
+    try {
+        const userId = getUserId(req);
+        const rows = db.prepare(`
+            SELECT
+                p.*,
+                COUNT(pt.track_id) as track_count,
+                (
+                    SELECT pt2.track_id
+                    FROM playlist_tracks pt2
+                    WHERE pt2.playlist_id = p.id
+                    ORDER BY pt2.sort_order ASC, pt2.created_at ASC
+                    LIMIT 1
+                ) as cover_track_id
+            FROM playlists p
+            LEFT JOIN playlist_tracks pt ON pt.playlist_id = p.id
+            WHERE p.user_id = ?
+            GROUP BY p.id
+            ORDER BY p.updated_at DESC, p.created_at DESC
+        `).all(userId) as any[];
+        res.json({ success: true, data: rows });
+    } catch (e: any) {
+        res.status(500).json({ success: false, error: e.message });
+    }
+});
+
+app.post('/api/playlists', (req, res) => {
+    try {
+        const userId = getUserId(req);
+        const name = String(req.body?.name || '').trim();
+        if (!name) {
+            return res.status(400).json({ success: false, error: 'Playlist name is required' });
+        }
+
+        const id = crypto.randomUUID();
+        db.prepare(
+            'INSERT INTO playlists (id, user_id, name, cover) VALUES (?, ?, ?, ?)'
+        ).run(id, userId, name, req.body?.cover || null);
+
+        const playlist = db.prepare(
+            'SELECT *, 0 as track_count, NULL as cover_track_id FROM playlists WHERE id = ?'
+        ).get(id) as any;
+        res.json({ success: true, data: playlist });
+    } catch (e: any) {
+        res.status(500).json({ success: false, error: e.message });
+    }
+});
+
+app.patch('/api/playlists/:id', (req, res) => {
+    try {
+        const userId = getUserId(req);
+        const id = req.params.id;
+        const name = String(req.body?.name || '').trim();
+        if (!name) {
+            return res.status(400).json({ success: false, error: 'Playlist name is required' });
+        }
+
+        const result = db.prepare(
+            'UPDATE playlists SET name = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ? AND user_id = ?'
+        ).run(name, id, userId);
+        if (!result.changes) {
+            return res.status(404).json({ success: false, error: 'Playlist not found' });
+        }
+        res.json({ success: true });
+    } catch (e: any) {
+        res.status(500).json({ success: false, error: e.message });
+    }
+});
+
+app.delete('/api/playlists/:id', (req, res) => {
+    try {
+        const userId = getUserId(req);
+        const id = req.params.id;
+        db.transaction(() => {
+            db.prepare('DELETE FROM playlist_tracks WHERE playlist_id = ?').run(id);
+            db.prepare('DELETE FROM playlists WHERE id = ? AND user_id = ?').run(id, userId);
+        })();
+        res.json({ success: true });
+    } catch (e: any) {
+        res.status(500).json({ success: false, error: e.message });
+    }
+});
+
+app.get('/api/playlists/:id', (req, res) => {
+    try {
+        const userId = getUserId(req);
+        const id = req.params.id;
+        const playlist = db.prepare(`
+            SELECT
+                p.*,
+                COUNT(pt.track_id) as track_count,
+                (
+                    SELECT pt2.track_id
+                    FROM playlist_tracks pt2
+                    WHERE pt2.playlist_id = p.id
+                    ORDER BY pt2.sort_order ASC, pt2.created_at ASC
+                    LIMIT 1
+                ) as cover_track_id
+            FROM playlists p
+            LEFT JOIN playlist_tracks pt ON pt.playlist_id = p.id
+            WHERE p.id = ? AND p.user_id = ?
+            GROUP BY p.id
+        `).get(id, userId) as any;
+        if (!playlist) {
+            return res.status(404).json({ success: false, error: 'Playlist not found' });
+        }
+
+        const tracks = db.prepare(`
+            SELECT t.*, pt.sort_order, pt.created_at as added_at
+            FROM playlist_tracks pt
+            JOIN tracks t ON t.id = pt.track_id
+            WHERE pt.playlist_id = ?
+            ORDER BY pt.sort_order ASC, pt.created_at ASC
+        `).all(id) as any[];
+
+        res.json({ success: true, data: { ...playlist, tracks } });
+    } catch (e: any) {
+        res.status(500).json({ success: false, error: e.message });
+    }
+});
+
+app.post('/api/playlists/:id/tracks', (req, res) => {
+    try {
+        const userId = getUserId(req);
+        const playlistId = req.params.id;
+        const playlist = db.prepare(
+            'SELECT * FROM playlists WHERE id = ? AND user_id = ?'
+        ).get(playlistId, userId) as any;
+        if (!playlist) {
+            return res.status(404).json({ success: false, error: 'Playlist not found' });
+        }
+
+        const trackIds = Array.isArray(req.body?.trackIds)
+            ? req.body.trackIds
+            : req.body?.trackId
+                ? [req.body.trackId]
+                : [];
+        if (!trackIds.length) {
+            return res.status(400).json({ success: false, error: 'Track id is required' });
+        }
+
+        const maxSort = (db.prepare(
+            'SELECT COALESCE(MAX(sort_order), -1) as max_sort FROM playlist_tracks WHERE playlist_id = ?'
+        ).get(playlistId) as any).max_sort as number;
+
+        db.transaction(() => {
+            trackIds.forEach((trackId: string, index: number) => {
+                if (!ensureTrackExists(trackId)) {
+                    return;
+                }
+                db.prepare(`
+                    INSERT INTO playlist_tracks (playlist_id, track_id, sort_order)
+                    VALUES (?, ?, ?)
+                    ON CONFLICT(playlist_id, track_id) DO NOTHING
+                `).run(playlistId, trackId, maxSort + index + 1);
+            });
+            db.prepare(
+                'UPDATE playlists SET updated_at = CURRENT_TIMESTAMP WHERE id = ?'
+            ).run(playlistId);
+        })();
+
+        res.json({ success: true });
+    } catch (e: any) {
+        res.status(500).json({ success: false, error: e.message });
+    }
+});
+
+app.delete('/api/playlists/:id/tracks/:trackId', (req, res) => {
+    try {
+        const userId = getUserId(req);
+        const playlistId = req.params.id;
+        const trackId = req.params.trackId;
+        const playlist = db.prepare(
+            'SELECT * FROM playlists WHERE id = ? AND user_id = ?'
+        ).get(playlistId, userId) as any;
+        if (!playlist) {
+            return res.status(404).json({ success: false, error: 'Playlist not found' });
+        }
+
+        db.transaction(() => {
+            db.prepare(
+                'DELETE FROM playlist_tracks WHERE playlist_id = ? AND track_id = ?'
+            ).run(playlistId, trackId);
+            db.prepare(
+                'UPDATE playlists SET updated_at = CURRENT_TIMESTAMP WHERE id = ?'
+            ).run(playlistId);
+        })();
+        res.json({ success: true });
+    } catch (e: any) {
+        res.status(500).json({ success: false, error: e.message });
+    }
+});
+
 // Discovery: Random tracks
 app.get('/api/discovery/random', (req, res) => {
     try {
-        const tracks = db.prepare(`SELECT * FROM tracks ORDER BY RANDOM() LIMIT 50`).all() as any[];
+        const limit = Math.min(parseInt(req.query.limit as string) || 30, 100);
+        const tracks = db.prepare(`SELECT * FROM tracks ORDER BY RANDOM() LIMIT ?`).all(limit) as any[];
         res.json({ success: true, data: tracks });
     } catch (e: any) {
         res.status(500).json({ success: false, error: e.message });
@@ -255,36 +599,6 @@ app.get('/api/discovery/albums', (req, res) => {
         res.status(500).json({ success: false, error: e.message });
     }
 });
-// Discovery: Play History
-app.post('/api/tracks/:id/play', (req, res) => {
-    try {
-        const { id } = req.params;
-        db.prepare('INSERT INTO play_history (track_id) VALUES (?)').run(id);
-        res.json({ success: true });
-    } catch (e: any) {
-        res.status(500).json({ success: false, error: e.message });
-    }
-});
-
-app.get('/api/history', (req, res) => {
-    try {
-        const limit = parseInt(req.query.limit as string) || 50;
-        // Join with tracks to get full info, and use DISTINCT/GROUP BY to avoid duplicates of the SAME song showing up 10 times in a row if desired, 
-        // but usually history shows every play. Let's show unique latest plays of each song for a cleaner list, or just raw history.
-        // User said "History", usually raw history is fine.
-        const rows = db.prepare(`
-            SELECT h.id as history_id, h.played_at, t.* 
-            FROM play_history h 
-            JOIN tracks t ON h.track_id = t.id 
-            ORDER BY h.played_at DESC 
-            LIMIT ?
-        `).all(limit) as any[];
-        res.json({ success: true, data: rows });
-    } catch (e: any) {
-        res.status(500).json({ success: false, error: e.message });
-    }
-});
-
 app.post('/api/tracks/organize', (req, res) => {
     try {
         const { levels } = req.body;
@@ -358,6 +672,9 @@ app.post('/api/tracks/delete', (req, res) => {
         let deletedCount = 0;
         const getStmt = db.prepare('SELECT filepath FROM tracks WHERE id = ?');
         const deleteStmt = db.prepare('DELETE FROM tracks WHERE id = ?');
+        const deleteFavoritesStmt = db.prepare('DELETE FROM favorites WHERE track_id = ?');
+        const deleteHistoryStmt = db.prepare('DELETE FROM play_history WHERE track_id = ?');
+        const deletePlaylistTracksStmt = db.prepare('DELETE FROM playlist_tracks WHERE track_id = ?');
 
         db.transaction(() => {
             for (const id of ids) {
@@ -367,6 +684,9 @@ app.post('/api/tracks/delete', (req, res) => {
                         if (fs.existsSync(track.filepath)) {
                             fs.unlinkSync(track.filepath);
                         }
+                        deleteFavoritesStmt.run(id);
+                        deleteHistoryStmt.run(id);
+                        deletePlaylistTracksStmt.run(id);
                         deleteStmt.run(id);
                         deletedCount++;
                     } catch (err) {
