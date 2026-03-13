@@ -13,6 +13,13 @@ export const dbPath = path.join(dbDataPath, 'music_tagger.db');
 export const db: DBType = new Database(dbPath);
 db.pragma('foreign_keys = ON');
 
+const hasColumn = (table: string, column: string) => {
+  const columns = db.prepare(`PRAGMA table_info(${table})`).all() as Array<{
+    name: string;
+  }>;
+  return columns.some((item) => item.name === column);
+};
+
 // Initialize tables
 db.exec(`
   CREATE TABLE IF NOT EXISTS tracks (
@@ -100,8 +107,6 @@ db.exec(`
   CREATE INDEX IF NOT EXISTS idx_favorites_user_created ON favorites(user_id, created_at DESC);
   CREATE INDEX IF NOT EXISTS idx_playlists_user_updated ON playlists(user_id, updated_at DESC);
   CREATE INDEX IF NOT EXISTS idx_playlist_tracks_playlist_sort ON playlist_tracks(playlist_id, track_id, sort_order ASC, created_at ASC);
-  CREATE INDEX IF NOT EXISTS idx_play_history_user_played_at ON play_history(user_id, played_at DESC);
-  CREATE INDEX IF NOT EXISTS idx_play_history_user_track_latest ON play_history(user_id, track_id, id DESC);
 `);
 
 // Default admin user check & initial
@@ -126,14 +131,18 @@ try { db.exec("CREATE TABLE IF NOT EXISTS favorites (user_id TEXT NOT NULL, trac
 try { db.exec("CREATE TABLE IF NOT EXISTS playlists (id TEXT PRIMARY KEY, user_id TEXT NOT NULL, name TEXT NOT NULL, cover TEXT, created_at DATETIME DEFAULT CURRENT_TIMESTAMP, updated_at DATETIME DEFAULT CURRENT_TIMESTAMP);"); } catch (e) { }
 try { db.exec("CREATE TABLE IF NOT EXISTS playlist_tracks (playlist_id TEXT NOT NULL, track_id TEXT NOT NULL, sort_order INTEGER DEFAULT 0, created_at DATETIME DEFAULT CURRENT_TIMESTAMP, PRIMARY KEY (playlist_id, track_id));"); } catch (e) { }
 try { db.exec("CREATE TABLE IF NOT EXISTS play_history (id INTEGER PRIMARY KEY AUTOINCREMENT, user_id TEXT, track_id TEXT NOT NULL REFERENCES tracks(id) ON DELETE CASCADE, played_at DATETIME DEFAULT CURRENT_TIMESTAMP);"); } catch (e) { }
-try { db.exec("ALTER TABLE play_history ADD COLUMN user_id TEXT;"); } catch (e) { }
+if (!hasColumn('play_history', 'user_id')) {
+  try { db.exec("ALTER TABLE play_history ADD COLUMN user_id TEXT;"); } catch (e) { }
+}
 try { db.exec("CREATE INDEX IF NOT EXISTS idx_play_history_track ON play_history(track_id);"); } catch (e) { }
 try { db.exec("CREATE INDEX IF NOT EXISTS idx_play_history_time ON play_history(played_at);"); } catch (e) { }
 try { db.exec("CREATE INDEX IF NOT EXISTS idx_favorites_user_created ON favorites(user_id, created_at DESC);"); } catch (e) { }
 try { db.exec("CREATE INDEX IF NOT EXISTS idx_playlists_user_updated ON playlists(user_id, updated_at DESC);"); } catch (e) { }
 try { db.exec("CREATE INDEX IF NOT EXISTS idx_playlist_tracks_playlist_sort ON playlist_tracks(playlist_id, track_id, sort_order ASC, created_at ASC);"); } catch (e) { }
-try { db.exec("CREATE INDEX IF NOT EXISTS idx_play_history_user_played_at ON play_history(user_id, played_at DESC);"); } catch (e) { }
-try { db.exec("CREATE INDEX IF NOT EXISTS idx_play_history_user_track_latest ON play_history(user_id, track_id, id DESC);"); } catch (e) { }
+if (hasColumn('play_history', 'user_id')) {
+  try { db.exec("CREATE INDEX IF NOT EXISTS idx_play_history_user_played_at ON play_history(user_id, played_at DESC);"); } catch (e) { }
+  try { db.exec("CREATE INDEX IF NOT EXISTS idx_play_history_user_track_latest ON play_history(user_id, track_id, id DESC);"); } catch (e) { }
+}
 
 const singleUser = db.prepare(
   'SELECT id FROM users ORDER BY created_at ASC LIMIT 1'
