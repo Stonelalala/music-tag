@@ -9,6 +9,7 @@ export interface Task {
     parent_id?: string;
     type: TaskType;
     status: TaskStatus;
+    priority: number;
     progress: number;
     message: string;
     payload?: string;
@@ -22,25 +23,29 @@ class TaskManager {
     // In-memory set of cancelled task IDs to allow long-running logic to check status
     private cancelledTasks = new Set<string>();
 
-    createTask(type: TaskType, message: string, payload?: any, parentId?: string): string {
+    createTask(type: TaskType, message: string, payload?: any, parentId?: string, priority = 0): string {
         const id = crypto.randomUUID();
         const payloadStr = payload ? JSON.stringify(payload) : null;
 
         db.prepare(`
-            INSERT INTO tasks (id, type, status, progress, message, payload, logs, parent_id)
-            VALUES (?, ?, 'pending', 0, ?, ?, '', ?)
-        `).run(id, type, message, payloadStr, parentId || null);
+            INSERT INTO tasks (id, type, status, priority, progress, message, payload, logs, parent_id)
+            VALUES (?, ?, 'pending', ?, 0, ?, ?, '', ?)
+        `).run(id, type, priority, message, payloadStr, parentId || null);
 
         return id;
     }
 
-    updateTask(id: string, updates: Partial<Pick<Task, 'status' | 'progress' | 'message' | 'result'>>) {
+    updateTask(id: string, updates: Partial<Pick<Task, 'status' | 'priority' | 'progress' | 'message' | 'result'>>) {
         const sets: string[] = [];
         const params: any[] = [];
 
         if (updates.status) {
             sets.push('status = ?');
             params.push(updates.status);
+        }
+        if (updates.priority !== undefined) {
+            sets.push('priority = ?');
+            params.push(updates.priority);
         }
         if (updates.progress !== undefined) {
             sets.push('progress = ?');
@@ -101,9 +106,27 @@ class TaskManager {
     }
 
     getRecentTasks(limit = 50): Task[] {
-        // Return top-level tasks and their children separately or as a flat list
-        // Frontend will reconstruct hierarchy
-        return db.prepare('SELECT * FROM tasks ORDER BY created_at DESC LIMIT ?').all(limit) as Task[];
+        return db.prepare(`
+            SELECT *
+            FROM tasks
+            ORDER BY
+                CASE
+                    WHEN status IN ('running', 'pending') THEN 0
+                    ELSE 1
+                END ASC,
+                priority DESC,
+                created_at DESC
+            LIMIT ?
+        `).all(limit) as Task[];
+    }
+
+    setPriority(id: string, priority: number) {
+        const normalized = Math.max(-5, Math.min(5, Math.trunc(priority)));
+        db.prepare(`
+            UPDATE tasks
+            SET priority = ?, updated_at = CURRENT_TIMESTAMP
+            WHERE id = ?
+        `).run(normalized, id);
     }
 
     cleanupOldTasks(days = 7) {

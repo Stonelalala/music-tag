@@ -292,7 +292,7 @@ export async function processPendingTracks(taskId?: string) {
         const updateStatus = db.prepare('UPDATE tracks SET scrape_status = ?, last_scraped_at = CURRENT_TIMESTAMP WHERE id = ?');
         const updateMetadata = db.prepare(`
             UPDATE tracks 
-            SET title = ?, artist = ?, album = ? 
+            SET title = ?, artist = ?, album = ?, year = ? 
             WHERE id = ?
         `);
 
@@ -407,7 +407,7 @@ export async function processPendingTracks(taskId?: string) {
                                 const success = NodeID3.update(id3Tags, track.filepath);
                                 if (success) {
                                     console.log(`   ✅ Successfully wrote ID3 tags to ${track.filepath}`);
-                                    updateMetadata.run(metadata.title, metadata.artist, metadata.album, track.id);
+                                    updateMetadata.run(metadata.title, metadata.artist, metadata.album, metadata.year || null, track.id);
                                     updateStatus.run(1, track.id); // 1 = Success
                                 } else {
                                     console.log(`   ❌ Failed to write ID3 tags to ${track.filepath}`);
@@ -434,7 +434,7 @@ export async function processPendingTracks(taskId?: string) {
 
                                 flac.save();
                                 console.log(`   ✅ Successfully wrote FLAC tags to ${track.filepath}`);
-                                updateMetadata.run(metadata.title, metadata.artist, metadata.album, track.id);
+                                updateMetadata.run(metadata.title, metadata.artist, metadata.album, metadata.year || null, track.id);
                                 updateStatus.run(1, track.id); // 1 = Success
                             } else {
                                 console.log(`   ⚠️ Skipping write, extension ${track.extension} is not supported. Marked as ignored.`);

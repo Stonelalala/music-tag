@@ -76,10 +76,12 @@ export async function downloadAndTagKuwoSong(musicDir: string, rid: string, leve
         let duration = 0;
         let bitrate = 0;
         let size = 0;
+        let year: string | null = null;
         try {
             const metadata = await mm.parseFile(filepath);
             duration = metadata.format.duration || 0;
             bitrate = metadata.format.bitrate || 0;
+            year = metadata.common.year?.toString() ?? year;
             size = fs.statSync(filepath).size;
         } catch (e) {
             log(`Failed to parse technical metadata: ${e}`);
@@ -88,15 +90,16 @@ export async function downloadAndTagKuwoSong(musicDir: string, rid: string, leve
         // DB
         const dbId = 'kuwo_' + rid;
         const stmt = db.prepare(`
-            INSERT INTO tracks (id, filepath, filename, extension, title, artist, album, duration, bitrate, size, scrape_status)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1)
+            INSERT INTO tracks (id, filepath, filename, extension, title, artist, album, year, duration, bitrate, size, scrape_status)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1)
             ON CONFLICT(filepath) DO UPDATE SET 
                 scrape_status = 1,
+                year = excluded.year,
                 duration = excluded.duration,
                 bitrate = excluded.bitrate,
                 size = excluded.size
         `);
-        stmt.run(dbId, filepath, filename, ext, title, artist, album, duration, bitrate, size);
+        stmt.run(dbId, filepath, filename, ext, title, artist, album, year, duration, bitrate, size);
 
         return filepath;
     } catch (e: any) {

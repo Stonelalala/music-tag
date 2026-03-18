@@ -8,6 +8,23 @@ import { taskManager } from './taskManager';
 
 const AUDIO_EXTENSIONS = new Set(['.mp3', '.flac', '.m4a', '.wav', '.ogg']);
 
+const extractYear = (metadata: mm.IAudioMetadata) => {
+    const common = metadata.common;
+    if (common.year) {
+        return String(common.year);
+    }
+
+    const rawDate = common.date;
+    if (typeof rawDate === 'string') {
+        const match = rawDate.match(/\d{4}/);
+        if (match) {
+            return match[0];
+        }
+    }
+
+    return null;
+};
+
 export async function scanLibrary(musicDir: string, taskId?: string) {
     const log = (msg: string) => {
         if (taskId) {
@@ -26,12 +43,12 @@ export async function scanLibrary(musicDir: string, taskId?: string) {
     // Prepared statements for DB operations
     const getTrackByPath = db.prepare('SELECT id FROM tracks WHERE filepath = ?');
     const insertTrack = db.prepare(`
-        INSERT INTO tracks (id, filepath, filename, extension, title, artist, album, bitrate, sample_rate, duration, size, scrape_status) 
-        VALUES (@id, @filepath, @filename, @extension, @title, @artist, @album, @bitrate, @sample_rate, @duration, @size, 0)
+        INSERT INTO tracks (id, filepath, filename, extension, title, artist, album, year, bitrate, sample_rate, duration, size, scrape_status) 
+        VALUES (@id, @filepath, @filename, @extension, @title, @artist, @album, @year, @bitrate, @sample_rate, @duration, @size, 0)
     `);
 
     const updateTechnicalMeta = db.prepare(`
-        UPDATE tracks SET size = @size, bitrate = @bitrate, sample_rate = @sample_rate, duration = @duration
+        UPDATE tracks SET size = @size, bitrate = @bitrate, sample_rate = @sample_rate, duration = @duration, year = COALESCE(@year, year)
         WHERE filepath = @filepath
     `);
 
@@ -71,6 +88,7 @@ export async function scanLibrary(musicDir: string, taskId?: string) {
                                 title: common.title || path.basename(file.name, ext),
                                 artist: common.artist || common.albumartist || 'Unknown Artist',
                                 album: common.album || 'Unknown Album',
+                                year: extractYear(metadata),
                                 bitrate: format.bitrate || 0,
                                 sample_rate: format.sampleRate || 0,
                                 duration: format.duration || 0,
@@ -97,6 +115,7 @@ export async function scanLibrary(musicDir: string, taskId?: string) {
                                     bitrate: metadata.format.bitrate || 0,
                                     sample_rate: metadata.format.sampleRate || 0,
                                     duration: metadata.format.duration || 0,
+                                    year: extractYear(metadata),
                                     filepath: fullPath
                                 });
                             }

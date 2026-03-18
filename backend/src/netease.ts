@@ -107,6 +107,7 @@ export async function fetchNeteaseRecommendSongs(cookie: string) {
 import axios from 'axios';
 import * as fs from 'fs';
 import * as path from 'path';
+import * as mm from 'music-metadata';
 import NodeID3 from 'node-id3';
 import crypto from 'crypto';
 import type { Database } from 'better-sqlite3';
@@ -146,6 +147,7 @@ export async function fetchNeteaseSongDetail(id: number | string) {
                 title: t2s(song.name || ''),
                 artist: t2s(song.ar ? song.ar.map((a: any) => a.name).join(', ') : ''),
                 album: t2s(song.al?.name || ''),
+                year: song.publishTime ? new Date(song.publishTime).getFullYear().toString() : undefined,
                 coverUrl: song.al?.picUrl || null,
                 duration: song.dt ? song.dt / 1000 : 0, // Convert ms to s
             };
@@ -495,9 +497,17 @@ export async function downloadAndTagNeteaseSong(id: number | string, musicDir: s
 
         // Write Tags by Extension
         let scrapeStatus = 1;
+        let detectedYear: string | null = detail.year ?? null;
         try {
             if (ext === '.mp3') {
-                const tags: NodeID3.Tags = { title: detail.title, artist: detail.artist, album: detail.album };
+                const tags: NodeID3.Tags = {
+                    title: detail.title,
+                    artist: detail.artist,
+                    album: detail.album,
+                };
+                if (detail.year) {
+                    tags.year = detail.year;
+                }
                 if (lyricText) tags.unsynchronisedLyrics = { language: 'eng', text: lyricText };
                 if (coverBuffer) {
                     tags.image = { mime: coverMime, type: { id: 3, name: 'front cover' }, description: 'Cover', imageBuffer: coverBuffer };
@@ -509,6 +519,7 @@ export async function downloadAndTagNeteaseSong(id: number | string, musicDir: s
                 if (detail.title) { flac.removeTag('TITLE'); flac.setTag(`TITLE=${detail.title}`); }
                 if (detail.artist) { flac.removeTag('ARTIST'); flac.setTag(`ARTIST=${detail.artist}`); }
                 if (detail.album) { flac.removeTag('ALBUM'); flac.setTag(`ALBUM=${detail.album}`); }
+                if (detail.year) { flac.removeTag('DATE'); flac.setTag(`DATE=${detail.year}`); }
                 if (lyricText) { flac.removeTag('LYRICS'); flac.setTag(`LYRICS=${lyricText}`); }
                 if (coverBuffer) { try { flac.importPictureFromBuffer(coverBuffer); } catch (e) { } }
                 flac.save();
@@ -518,14 +529,21 @@ export async function downloadAndTagNeteaseSong(id: number | string, musicDir: s
             scrapeStatus = 2;
         }
 
+        try {
+            const metadata = await mm.parseFile(filepath);
+            detectedYear = metadata.common.year?.toString() ?? detectedYear;
+        } catch (e) {
+            console.error(`[Netease] Failed to parse year for ${filepath}`, e);
+        }
+
         // Insert into Database
         const existing = db.prepare('SELECT id FROM tracks WHERE filepath = ?').get(filepath);
         if (!existing) {
             const crypto = require('crypto');
             const trackId = crypto.randomUUID ? crypto.randomUUID() : crypto.randomBytes(16).toString('hex');
             db.prepare(`
-                 INSERT INTO tracks (id, filepath, filename, extension, title, artist, album, bitrate, duration, size, scrape_status) 
-                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                 INSERT INTO tracks (id, filepath, filename, extension, title, artist, album, year, bitrate, duration, size, scrape_status) 
+                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
              `).run(
                 trackId,
                 filepath,
@@ -534,17 +552,19 @@ export async function downloadAndTagNeteaseSong(id: number | string, musicDir: s
                 detail.title,
                 detail.artist,
                 detail.album,
+                detectedYear,
                 probeResult.bitrate || 0,
                 detail.duration || 0,
                 finalStats.size,
                 scrapeStatus
             );
         } else {
-            db.prepare('UPDATE tracks SET title=?, artist=?, album=?, bitrate=?, duration=?, size=?, scrape_status=?, updated_at=CURRENT_TIMESTAMP WHERE id=?')
+            db.prepare('UPDATE tracks SET title=?, artist=?, album=?, year=?, bitrate=?, duration=?, size=?, scrape_status=?, updated_at=CURRENT_TIMESTAMP WHERE id=?')
                 .run(
                     detail.title,
                     detail.artist,
                     detail.album,
+                    detectedYear,
                     probeResult.bitrate || 0,
                     detail.duration || 0,
                     finalStats.size,

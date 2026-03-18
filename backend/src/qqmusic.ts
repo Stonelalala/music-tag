@@ -233,11 +233,13 @@ export async function downloadAndTagQQMusicSong(musicDir: string, id: string | n
         let duration = (detail as any).time || 0;
         let bitrate = probeResult.bitrate || 0;
         let finalSize = probeResult.size || 0;
+        let year: string | null = null;
 
         try {
             const metadata = await mm.parseFile(filepath);
             if (metadata.format.duration) duration = metadata.format.duration;
             if (metadata.format.bitrate) bitrate = Math.floor(metadata.format.bitrate / 1000);
+            year = metadata.common.year?.toString() ?? year;
             finalSize = fs.statSync(filepath).size;
         } catch (e) {
             console.error('[QQMusic] Tech info extraction error:', e);
@@ -246,12 +248,13 @@ export async function downloadAndTagQQMusicSong(musicDir: string, id: string | n
         // Add to database
         try {
             const stmt = db.prepare(`
-                INSERT INTO tracks (id, filepath, filename, extension, title, artist, album, duration, bitrate, size, scrape_status)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1)
+                INSERT INTO tracks (id, filepath, filename, extension, title, artist, album, year, duration, bitrate, size, scrape_status)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1)
                 ON CONFLICT(filepath) DO UPDATE SET
                     title = excluded.title,
                     artist = excluded.artist,
                     album = excluded.album,
+                    year = excluded.year,
                     duration = excluded.duration,
                     bitrate = excluded.bitrate,
                     size = excluded.size,
@@ -259,7 +262,7 @@ export async function downloadAndTagQQMusicSong(musicDir: string, id: string | n
             `);
             // QQ ID usually string, so we need random ID or the QQ ID
             const dbId = 'qq_' + id;
-            stmt.run(dbId, filepath, filename, ext, titleStr, artistStr, albumStr, duration, bitrate, finalSize);
+            stmt.run(dbId, filepath, filename, ext, titleStr, artistStr, albumStr, year, duration, bitrate, finalSize);
         } catch (dbErr) {
             console.error('[QQMusic] DB Insertion Error:', dbErr);
         }

@@ -4,6 +4,7 @@ import dotenv from 'dotenv';
 import cron from 'node-cron';
 import path from 'path';
 import fs from 'fs';
+import crypto from 'crypto';
 import multer from 'multer';
 import NodeID3 from 'node-id3';
 import axios from 'axios';
@@ -81,6 +82,49 @@ const ensureTrackExists = (trackId: string) => {
     return db.prepare('SELECT * FROM tracks WHERE id = ?').get(trackId) as any;
 };
 
+const uniqueTrackIds = (trackIds: unknown): string[] => {
+    if (!Array.isArray(trackIds)) {
+        return [];
+    }
+    return Array.from(
+        new Set(
+            trackIds
+                .filter((item): item is string => typeof item === 'string' && item.trim().length > 0)
+                .map((item) => item.trim())
+        )
+    );
+};
+
+const insertPlaylistTrack = db.prepare(`
+    INSERT INTO playlist_tracks (playlist_id, track_id, sort_order)
+    SELECT ?, ?, ?
+    WHERE NOT EXISTS (
+        SELECT 1
+        FROM playlist_tracks
+        WHERE playlist_id = ? AND track_id = ?
+    )
+`);
+
+const upsertUserPreference = db.prepare(`
+    INSERT INTO user_preferences (user_id, preference_key, preference_value, updated_at)
+    VALUES (?, ?, ?, CURRENT_TIMESTAMP)
+    ON CONFLICT(user_id, preference_key) DO UPDATE SET
+        preference_value = excluded.preference_value,
+        updated_at = CURRENT_TIMESTAMP
+`);
+
+const getUserPreferences = (userId: string) =>
+    db.prepare(`
+        SELECT preference_key, preference_value, updated_at
+        FROM user_preferences
+        WHERE user_id = ?
+        ORDER BY updated_at DESC
+    `).all(userId) as Array<{
+        preference_key: string;
+        preference_value: string | null;
+        updated_at: string;
+    }>;
+
 // Auth Routes
 app.post('/api/auth/login', (req, res) => {
     const { username, password } = req.body;
@@ -128,7 +172,7 @@ import { taskManager } from './taskManager';
 
 app.post('/api/trigger-scan', async (req, res) => {
     try {
-        const taskId = taskManager.createTask('scan', 'Library scan triggered');
+        const taskId = taskManager.createTask('scan', 'Library scan triggered', undefined, undefined, 0);
         // Do not block response for full scan
         scanLibrary(MUSIC_DIR, taskId).catch(err => console.error("Scan error:", err));
         res.json({ success: true, taskId, message: 'Scan job triggered in background.' });
@@ -139,7 +183,7 @@ app.post('/api/trigger-scan', async (req, res) => {
 
 app.post('/api/trigger-scrape', async (req, res) => {
     try {
-        const taskId = taskManager.createTask('scrape', 'Batch scraping triggered');
+        const taskId = taskManager.createTask('scrape', 'Batch scraping triggered', undefined, undefined, 0);
         // Do not block response for scrape job
         processPendingTracks(taskId).catch(err => console.error("Scraper error:", err));
         res.json({ success: true, taskId, message: 'Scrape batch job triggered in background.' });
@@ -375,12 +419,21 @@ app.get('/api/playlists', (req, res) => {
             SELECT
                 p.*,
                 COUNT(pt.track_id) as track_count,
-                (
+                COALESCE(
+                    (
+                    SELECT pt_cover.track_id
+                    FROM playlist_tracks pt_cover
+                    WHERE pt_cover.playlist_id = p.id
+                      AND pt_cover.track_id = NULLIF(p.cover, '')
+                    LIMIT 1
+                    ),
+                    (
                     SELECT pt2.track_id
                     FROM playlist_tracks pt2
                     WHERE pt2.playlist_id = p.id
                     ORDER BY pt2.sort_order ASC, pt2.created_at ASC
                     LIMIT 1
+                    )
                 ) as cover_track_id
             FROM playlists p
             LEFT JOIN playlist_tracks pt ON pt.playlist_id = p.id
@@ -398,19 +451,32 @@ app.post('/api/playlists', (req, res) => {
     try {
         const userId = getUserId(req);
         const name = String(req.body?.name || '').trim();
+        const trackIds = uniqueTrackIds(req.body?.trackIds);
+        const coverTrackId = typeof req.body?.coverTrackId === 'string'
+            ? req.body.coverTrackId.trim()
+            : '';
         if (!name) {
             return res.status(400).json({ success: false, error: 'Playlist name is required' });
         }
 
         const id = crypto.randomUUID();
-        db.prepare(
-            'INSERT INTO playlists (id, user_id, name, cover) VALUES (?, ?, ?, ?)'
-        ).run(id, userId, name, req.body?.cover || null);
+        db.transaction(() => {
+            db.prepare(
+                'INSERT INTO playlists (id, user_id, name, cover) VALUES (?, ?, ?, ?)'
+            ).run(id, userId, name, coverTrackId || null);
+
+            trackIds.forEach((trackId, index) => {
+                if (!ensureTrackExists(trackId)) {
+                    return;
+                }
+                insertPlaylistTrack.run(id, trackId, index, id, trackId);
+            });
+        })();
 
         const playlist = db.prepare(
-            'SELECT *, 0 as track_count, NULL as cover_track_id FROM playlists WHERE id = ?'
+            'SELECT *, COALESCE(NULLIF(cover, \'\'), NULL) as cover_track_id FROM playlists WHERE id = ?'
         ).get(id) as any;
-        res.json({ success: true, data: playlist });
+        res.json({ success: true, data: { ...playlist, track_count: trackIds.length } });
     } catch (e: any) {
         res.status(500).json({ success: false, error: e.message });
     }
@@ -421,13 +487,30 @@ app.patch('/api/playlists/:id', (req, res) => {
         const userId = getUserId(req);
         const id = req.params.id;
         const name = String(req.body?.name || '').trim();
-        if (!name) {
-            return res.status(400).json({ success: false, error: 'Playlist name is required' });
+        const coverTrackId = typeof req.body?.coverTrackId === 'string'
+            ? req.body.coverTrackId.trim()
+            : null;
+        const updates: string[] = [];
+        const params: unknown[] = [];
+
+        if (name.length > 0) {
+            updates.push('name = ?');
+            params.push(name);
+        }
+        if (coverTrackId != null) {
+            updates.push('cover = ?');
+            params.push(coverTrackId.length == 0 ? null : coverTrackId);
+        }
+        if (updates.length === 0) {
+            return res.status(400).json({ success: false, error: 'Nothing to update' });
         }
 
+        updates.push('updated_at = CURRENT_TIMESTAMP');
+        params.push(id, userId);
+
         const result = db.prepare(
-            'UPDATE playlists SET name = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ? AND user_id = ?'
-        ).run(name, id, userId);
+            `UPDATE playlists SET ${updates.join(', ')} WHERE id = ? AND user_id = ?`
+        ).run(...params);
         if (!result.changes) {
             return res.status(404).json({ success: false, error: 'Playlist not found' });
         }
@@ -451,6 +534,92 @@ app.delete('/api/playlists/:id', (req, res) => {
     }
 });
 
+app.get('/api/playlists/smart', (req, res) => {
+    try {
+        const playlists = [
+            {
+                id: 'smart:most-played',
+                name: '最常播放',
+                description: '根据播放次数自动生成',
+            },
+            {
+                id: 'smart:recent-added',
+                name: '最近添加',
+                description: '优先展示最近入库的歌曲',
+            },
+            {
+                id: 'smart:rediscover',
+                name: '重新发现',
+                description: '把很久没听的歌重新带回来',
+            },
+        ];
+        res.json({ success: true, data: playlists });
+    } catch (e: any) {
+        res.status(500).json({ success: false, error: e.message });
+    }
+});
+
+app.get('/api/playlists/smart/:key', (req, res) => {
+    try {
+        const userId = getUserId(req);
+        const key = req.params.key;
+        const limit = Math.min(parseInt(req.query.limit as string) || 50, 200);
+        let name = '';
+        let tracks: any[] = [];
+
+        if (key === 'most-played') {
+            name = '最常播放';
+            tracks = db.prepare(`
+                SELECT t.*, COUNT(h.id) as play_count, MAX(h.played_at) as last_played_at
+                FROM play_history h
+                JOIN tracks t ON t.id = h.track_id
+                WHERE h.user_id = ?
+                GROUP BY h.track_id
+                ORDER BY play_count DESC, last_played_at DESC
+                LIMIT ?
+            `).all(userId, limit) as any[];
+        } else if (key === 'recent-added') {
+            name = '最近添加';
+            tracks = db.prepare(`
+                SELECT *
+                FROM tracks
+                ORDER BY created_at DESC, id DESC
+                LIMIT ?
+            `).all(limit) as any[];
+        } else if (key === 'rediscover') {
+            name = '重新发现';
+            tracks = db.prepare(`
+                SELECT
+                    t.*,
+                    MAX(h.played_at) as last_played_at
+                FROM tracks t
+                LEFT JOIN play_history h
+                    ON h.track_id = t.id AND h.user_id = ?
+                GROUP BY t.id
+                ORDER BY
+                    CASE WHEN last_played_at IS NULL THEN 0 ELSE 1 END ASC,
+                    last_played_at ASC,
+                    t.created_at DESC
+                LIMIT ?
+            `).all(userId, limit) as any[];
+        } else {
+            return res.status(404).json({ success: false, error: 'Smart playlist not found' });
+        }
+
+        res.json({
+            success: true,
+            data: {
+                id: `smart:${key}`,
+                name,
+                track_count: tracks.length,
+                tracks,
+            }
+        });
+    } catch (e: any) {
+        res.status(500).json({ success: false, error: e.message });
+    }
+});
+
 app.get('/api/playlists/:id', (req, res) => {
     try {
         const userId = getUserId(req);
@@ -459,12 +628,21 @@ app.get('/api/playlists/:id', (req, res) => {
             SELECT
                 p.*,
                 COUNT(pt.track_id) as track_count,
-                (
+                COALESCE(
+                    (
+                    SELECT pt_cover.track_id
+                    FROM playlist_tracks pt_cover
+                    WHERE pt_cover.playlist_id = p.id
+                      AND pt_cover.track_id = NULLIF(p.cover, '')
+                    LIMIT 1
+                    ),
+                    (
                     SELECT pt2.track_id
                     FROM playlist_tracks pt2
                     WHERE pt2.playlist_id = p.id
                     ORDER BY pt2.sort_order ASC, pt2.created_at ASC
                     LIMIT 1
+                    )
                 ) as cover_track_id
             FROM playlists p
             LEFT JOIN playlist_tracks pt ON pt.playlist_id = p.id
@@ -520,9 +698,19 @@ app.post('/api/playlists/:id/tracks', (req, res) => {
                 }
                 db.prepare(`
                     INSERT INTO playlist_tracks (playlist_id, track_id, sort_order)
-                    VALUES (?, ?, ?)
-                    ON CONFLICT(playlist_id, track_id) DO NOTHING
-                `).run(playlistId, trackId, maxSort + index + 1);
+                    SELECT ?, ?, ?
+                    WHERE NOT EXISTS (
+                        SELECT 1
+                        FROM playlist_tracks
+                        WHERE playlist_id = ? AND track_id = ?
+                    )
+                `).run(
+                    playlistId,
+                    trackId,
+                    maxSort + index + 1,
+                    playlistId,
+                    trackId
+                );
             });
             db.prepare(
                 'UPDATE playlists SET updated_at = CURRENT_TIMESTAMP WHERE id = ?'
@@ -552,9 +740,235 @@ app.delete('/api/playlists/:id/tracks/:trackId', (req, res) => {
                 'DELETE FROM playlist_tracks WHERE playlist_id = ? AND track_id = ?'
             ).run(playlistId, trackId);
             db.prepare(
+                'UPDATE playlists SET cover = NULL WHERE id = ? AND cover = ?'
+            ).run(playlistId, trackId);
+            db.prepare(
                 'UPDATE playlists SET updated_at = CURRENT_TIMESTAMP WHERE id = ?'
             ).run(playlistId);
         })();
+        res.json({ success: true });
+    } catch (e: any) {
+        res.status(500).json({ success: false, error: e.message });
+    }
+});
+
+app.put('/api/playlists/:id/tracks/reorder', (req, res) => {
+    try {
+        const userId = getUserId(req);
+        const playlistId = req.params.id;
+        const playlist = db.prepare(
+            'SELECT * FROM playlists WHERE id = ? AND user_id = ?'
+        ).get(playlistId, userId) as any;
+        if (!playlist) {
+            return res.status(404).json({ success: false, error: 'Playlist not found' });
+        }
+
+        const trackIds = uniqueTrackIds(req.body?.trackIds);
+        const coverTrackId = typeof req.body?.coverTrackId === 'string'
+            ? req.body.coverTrackId.trim()
+            : null;
+        if (trackIds.length === 0) {
+            return res.status(400).json({ success: false, error: 'Track ids are required' });
+        }
+
+        db.transaction(() => {
+            trackIds.forEach((trackId, index) => {
+                db.prepare(`
+                    UPDATE playlist_tracks
+                    SET sort_order = ?
+                    WHERE playlist_id = ? AND track_id = ?
+                `).run(index, playlistId, trackId);
+            });
+
+            if (coverTrackId != null) {
+                const normalizedCoverTrackId = trackIds.includes(coverTrackId)
+                    ? coverTrackId
+                    : '';
+                db.prepare(
+                    'UPDATE playlists SET cover = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?'
+                ).run(normalizedCoverTrackId.length === 0 ? null : normalizedCoverTrackId, playlistId);
+            } else {
+                db.prepare(
+                    'UPDATE playlists SET updated_at = CURRENT_TIMESTAMP WHERE id = ?'
+                ).run(playlistId);
+            }
+        })();
+
+        res.json({ success: true });
+    } catch (e: any) {
+        res.status(500).json({ success: false, error: e.message });
+    }
+});
+
+app.get('/api/data/export', (req, res) => {
+    try {
+        const userId = getUserId(req);
+
+        const favorites = db.prepare(`
+            SELECT track_id
+            FROM favorites
+            WHERE user_id = ?
+            ORDER BY created_at DESC
+        `).all(userId) as Array<{ track_id: string }>;
+
+        const playlists = db.prepare(`
+            SELECT id, name, cover, created_at, updated_at
+            FROM playlists
+            WHERE user_id = ?
+            ORDER BY updated_at DESC, created_at DESC
+        `).all(userId) as any[];
+
+        const playlistPayload = playlists.map((playlist) => ({
+            ...playlist,
+            tracks: (db.prepare(`
+                SELECT track_id
+                FROM playlist_tracks
+                WHERE playlist_id = ?
+                ORDER BY sort_order ASC, created_at ASC
+            `).all(playlist.id) as Array<{ track_id: string }>).map((item) => item.track_id),
+        }));
+
+        const history = db.prepare(`
+            SELECT track_id, played_at
+            FROM play_history
+            WHERE user_id = ?
+            ORDER BY played_at DESC
+            LIMIT 500
+        `).all(userId) as Array<{ track_id: string; played_at: string }>;
+
+        const preferences = getUserPreferences(userId).map((item) => ({
+            key: item.preference_key,
+            value: item.preference_value,
+            updated_at: item.updated_at,
+        }));
+
+        res.json({
+            success: true,
+            data: {
+                exported_at: new Date().toISOString(),
+                favorites: favorites.map((item) => item.track_id),
+                playlists: playlistPayload,
+                history,
+                preferences,
+            },
+        });
+    } catch (e: any) {
+        res.status(500).json({ success: false, error: e.message });
+    }
+});
+
+app.post('/api/data/import', (req, res) => {
+    try {
+        const userId = getUserId(req);
+        const payload = req.body?.data ?? req.body ?? {};
+        const mode = req.body?.mode === 'replace' ? 'replace' : 'merge';
+        const favorites = uniqueTrackIds(payload.favorites);
+        const playlists = Array.isArray(payload.playlists) ? payload.playlists : [];
+        const history = Array.isArray(payload.history) ? payload.history : [];
+        const preferences = Array.isArray(payload.preferences) ? payload.preferences : [];
+
+        db.transaction(() => {
+            if (mode === 'replace') {
+                db.prepare('DELETE FROM favorites WHERE user_id = ?').run(userId);
+                const playlistIds = (db.prepare(
+                    'SELECT id FROM playlists WHERE user_id = ?'
+                ).all(userId) as Array<{ id: string }>);
+                playlistIds.forEach(({ id }) => {
+                    db.prepare('DELETE FROM playlist_tracks WHERE playlist_id = ?').run(id);
+                });
+                db.prepare('DELETE FROM playlists WHERE user_id = ?').run(userId);
+                db.prepare('DELETE FROM play_history WHERE user_id = ?').run(userId);
+                db.prepare('DELETE FROM user_preferences WHERE user_id = ?').run(userId);
+            }
+
+            favorites.forEach((trackId) => {
+                if (!ensureTrackExists(trackId)) {
+                    return;
+                }
+                db.prepare(
+                    'INSERT OR IGNORE INTO favorites (user_id, track_id) VALUES (?, ?)'
+                ).run(userId, trackId);
+            });
+
+            playlists.forEach((playlist: any) => {
+                const name = String(playlist?.name || '').trim();
+                if (!name) {
+                    return;
+                }
+                const playlistId = crypto.randomUUID();
+                const coverTrackId = typeof playlist?.cover === 'string' && playlist.cover.trim().length > 0
+                    ? playlist.cover.trim()
+                    : null;
+                db.prepare(
+                    'INSERT INTO playlists (id, user_id, name, cover) VALUES (?, ?, ?, ?)'
+                ).run(playlistId, userId, name, coverTrackId);
+
+                uniqueTrackIds(playlist?.tracks).forEach((trackId, index) => {
+                    if (!ensureTrackExists(trackId)) {
+                        return;
+                    }
+                    insertPlaylistTrack.run(playlistId, trackId, index, playlistId, trackId);
+                });
+            });
+
+            history.forEach((item: any) => {
+                const trackId = typeof item?.track_id === 'string'
+                    ? item.track_id
+                    : typeof item?.trackId === 'string'
+                        ? item.trackId
+                        : '';
+                if (!trackId || !ensureTrackExists(trackId)) {
+                    return;
+                }
+                db.prepare(
+                    'INSERT INTO play_history (user_id, track_id, played_at) VALUES (?, ?, COALESCE(?, CURRENT_TIMESTAMP))'
+                ).run(userId, trackId, item?.played_at ?? item?.playedAt ?? null);
+            });
+
+            preferences.forEach((item: any) => {
+                const key = typeof item?.key === 'string' ? item.key.trim() : '';
+                if (!key) {
+                    return;
+                }
+                upsertUserPreference.run(userId, key, item?.value == null ? null : JSON.stringify(item.value));
+            });
+        })();
+
+        res.json({ success: true });
+    } catch (e: any) {
+        res.status(500).json({ success: false, error: e.message });
+    }
+});
+
+app.get('/api/preferences', (req, res) => {
+    try {
+        const userId = getUserId(req);
+        const preferences = getUserPreferences(userId).reduce<Record<string, unknown>>((acc, item) => {
+            if (item.preference_value == null) {
+                acc[item.preference_key] = null;
+                return acc;
+            }
+            try {
+                acc[item.preference_key] = JSON.parse(item.preference_value);
+            } catch (_) {
+                acc[item.preference_key] = item.preference_value;
+            }
+            return acc;
+        }, {});
+        res.json({ success: true, data: preferences });
+    } catch (e: any) {
+        res.status(500).json({ success: false, error: e.message });
+    }
+});
+
+app.put('/api/preferences/:key', (req, res) => {
+    try {
+        const userId = getUserId(req);
+        const key = String(req.params.key || '').trim();
+        if (!key) {
+            return res.status(400).json({ success: false, error: 'Preference key is required' });
+        }
+        upsertUserPreference.run(userId, key, req.body?.value == null ? null : JSON.stringify(req.body.value));
         res.json({ success: true });
     } catch (e: any) {
         res.status(500).json({ success: false, error: e.message });
@@ -602,7 +1016,7 @@ app.get('/api/discovery/albums', (req, res) => {
 app.post('/api/tracks/organize', (req, res) => {
     try {
         const { levels } = req.body;
-        const taskId = taskManager.createTask('organize', 'Library organization triggered', { levels });
+        const taskId = taskManager.createTask('organize', 'Library organization triggered', { levels }, undefined, 0);
 
         (async () => {
             try {
@@ -751,7 +1165,7 @@ app.get('/api/tracks/duplicates', (req, res) => {
 app.post('/api/batch-rename', (req, res) => {
     try {
         const folder = req.body.folder as string || '';
-        const taskId = taskManager.createTask('rename', 'Batch rename triggered', { folder });
+        const taskId = taskManager.createTask('rename', 'Batch rename triggered', { folder }, undefined, 0);
 
         (async () => {
             try {
@@ -991,7 +1405,7 @@ app.get('/api/lyrics/search-web', async (req, res) => {
 
 app.post('/api/tracks/:id', (req, res) => {
     try {
-        const { title, artist, album, lyrics } = req.body;
+        const { title, artist, album, year, lyrics } = req.body;
         const id = req.params.id;
 
         const track = db.prepare('SELECT filepath, extension FROM tracks WHERE id = ?').get(id) as any;
@@ -1002,7 +1416,7 @@ app.post('/api/tracks/:id', (req, res) => {
 
         if (track.extension === '.mp3') {
             const tags = NodeID3.read(track.filepath) || {};
-            const newTags = { ...tags, title, artist, album };
+            const newTags = { ...tags, title, artist, album, year };
             if (lyrics !== undefined) {
                 newTags.unsynchronisedLyrics = {
                     language: 'eng',
@@ -1023,6 +1437,11 @@ app.post('/api/tracks/:id', (req, res) => {
             flac.removeTag('ALBUM');
             if (album) flac.setTag(`ALBUM=${album}`);
 
+            if (year !== undefined) {
+                flac.removeTag('DATE');
+                if (year) flac.setTag(`DATE=${year}`);
+            }
+
             if (lyrics !== undefined) {
                 flac.removeTag('LYRICS');
                 if (lyrics) flac.setTag(`LYRICS=${lyrics}`);
@@ -1031,8 +1450,8 @@ app.post('/api/tracks/:id', (req, res) => {
             flac.save();
         }
 
-        db.prepare('UPDATE tracks SET title = ?, artist = ?, album = ?, scrape_status = 1, updated_at = CURRENT_TIMESTAMP WHERE id = ?')
-            .run(title, artist, album, id);
+        db.prepare('UPDATE tracks SET title = ?, artist = ?, album = ?, year = ?, scrape_status = 1, updated_at = CURRENT_TIMESTAMP WHERE id = ?')
+            .run(title, artist, album, year ?? null, id);
 
         res.json({ success: true });
     } catch (e: any) {
@@ -1190,7 +1609,7 @@ app.post('/api/netease/download', async (req, res) => {
         }
 
         if (isPlaylist) {
-            const mainTaskId = taskManager.createTask('playlist_import', `Importing playlist: ${name || id || 'Custom List'}`, { id, level });
+            const mainTaskId = taskManager.createTask('playlist_import', `Importing playlist: ${name || id || 'Custom List'}`, { id, level }, undefined, 1);
             (async () => {
                 try {
                     taskManager.updateTask(mainTaskId, { status: 'running', progress: 0 });
@@ -1208,7 +1627,7 @@ app.post('/api/netease/download', async (req, res) => {
                             return;
                         }
                         const songId = finalTrackIds[i];
-                        const childTaskId = taskManager.createTask('download_netease', `[Track ${i + 1}/${total}] ID: ${songId}`, { id: songId, level }, mainTaskId);
+                        const childTaskId = taskManager.createTask('download_netease', `[Track ${i + 1}/${total}] ID: ${songId}`, { id: songId, level }, mainTaskId, 2);
                         try {
                             taskManager.updateTask(childTaskId, { status: 'running', progress: 10 });
                             await downloadAndTagNeteaseSong(songId, MUSIC_DIR, db, level, cookie, childTaskId);
@@ -1227,7 +1646,7 @@ app.post('/api/netease/download', async (req, res) => {
             })();
             res.json({ success: true, taskId: mainTaskId });
         } else {
-            const taskId = taskManager.createTask('download_netease', `Downloading ID: ${id}`, { id, level });
+            const taskId = taskManager.createTask('download_netease', `Downloading ID: ${id}`, { id, level }, undefined, 2);
             (async () => {
                 try {
                     taskManager.updateTask(taskId, { status: 'running', progress: 10 });
@@ -1262,7 +1681,7 @@ app.post('/api/qq/parse', async (req, res) => {
 app.post('/api/qq/download', async (req, res) => {
     try {
         const { id, level = 'exhigh', cookie = '' } = req.body;
-        const taskId = taskManager.createTask('download_qq', `Downloading QQMusic song ${id}`, { id, level });
+        const taskId = taskManager.createTask('download_qq', `Downloading QQMusic song ${id}`, { id, level }, undefined, 2);
         (async () => {
             try {
                 taskManager.updateTask(taskId, { status: 'running', progress: 10 });
@@ -1283,7 +1702,7 @@ app.post('/api/qq/download', async (req, res) => {
 app.post('/api/kugou/download', async (req, res) => {
     try {
         const { id, level = 'exhigh' } = req.body;
-        const taskId = taskManager.createTask('download_kugou', `Downloading Kugou song ${id}`, { id, level });
+        const taskId = taskManager.createTask('download_kugou', `Downloading Kugou song ${id}`, { id, level }, undefined, 2);
         (async () => {
             try {
                 taskManager.updateTask(taskId, { status: 'running', progress: 10 });
@@ -1304,7 +1723,7 @@ app.post('/api/kugou/download', async (req, res) => {
 app.post('/api/kuwo/download', async (req, res) => {
     try {
         const { id, level = 'exhigh' } = req.body;
-        const taskId = taskManager.createTask('download_kuwo', `Downloading Kuwo song ${id}`, { id, level });
+        const taskId = taskManager.createTask('download_kuwo', `Downloading Kuwo song ${id}`, { id, level }, undefined, 2);
         (async () => {
             try {
                 taskManager.updateTask(taskId, { status: 'running', progress: 10 });
@@ -1321,6 +1740,94 @@ app.post('/api/kuwo/download', async (req, res) => {
         res.status(500).json({ success: false, error: e.message });
     }
 });
+
+const finishDownloadTask = async (taskId: string) => {
+    try { await scanLibrary(MUSIC_DIR, taskId); } catch (e) { console.error('Auto scan failed:', e); }
+    try { await processPendingTracks(taskId); } catch (e) { console.error('Auto scrape failed:', e); }
+};
+
+const retryTaskByType = (task: any) => {
+    const payload = task?.payload ? JSON.parse(task.payload) : {};
+
+    if (task.type === 'scan') {
+        const taskId = taskManager.createTask('scan', 'Library scan retried', undefined, undefined, 1);
+        scanLibrary(MUSIC_DIR, taskId).catch((err) => console.error('Scan retry error:', err));
+        return taskId;
+    }
+
+    if (task.type === 'scrape') {
+        const taskId = taskManager.createTask('scrape', 'Batch scraping retried', undefined, undefined, 1);
+        processPendingTracks(taskId).catch((err) => console.error('Scrape retry error:', err));
+        return taskId;
+    }
+
+    if (task.type === 'download_netease') {
+        const { id, level = 'exhigh' } = payload;
+        const cookie = getStoredConfig().neteaseCookie || '';
+        const taskId = taskManager.createTask('download_netease', `Retrying ID: ${id}`, { id, level }, undefined, 3);
+        (async () => {
+            try {
+                taskManager.updateTask(taskId, { status: 'running', progress: 10 });
+                await downloadAndTagNeteaseSong(id, MUSIC_DIR, db, level, cookie, taskId);
+                await finishDownloadTask(taskId);
+                taskManager.updateTask(taskId, { status: 'completed', progress: 100 });
+            } catch (err: any) {
+                taskManager.updateTask(taskId, { status: 'failed', message: err.message });
+            }
+        })();
+        return taskId;
+    }
+
+    if (task.type === 'download_qq') {
+        const { id, level = 'exhigh', cookie = '' } = payload;
+        const taskId = taskManager.createTask('download_qq', `Retrying QQMusic song ${id}`, { id, level }, undefined, 3);
+        (async () => {
+            try {
+                taskManager.updateTask(taskId, { status: 'running', progress: 10 });
+                await downloadAndTagQQMusicSong(MUSIC_DIR, id, level, cookie, taskId);
+                await finishDownloadTask(taskId);
+                taskManager.updateTask(taskId, { status: 'completed', progress: 100 });
+            } catch (err: any) {
+                taskManager.updateTask(taskId, { status: 'failed', message: err.message });
+            }
+        })();
+        return taskId;
+    }
+
+    if (task.type === 'download_kugou') {
+        const { id, level = 'exhigh' } = payload;
+        const taskId = taskManager.createTask('download_kugou', `Retrying Kugou song ${id}`, { id, level }, undefined, 3);
+        (async () => {
+            try {
+                taskManager.updateTask(taskId, { status: 'running', progress: 10 });
+                await downloadAndTagKugouSong(MUSIC_DIR, id, level, taskId);
+                await finishDownloadTask(taskId);
+                taskManager.updateTask(taskId, { status: 'completed', progress: 100 });
+            } catch (err: any) {
+                taskManager.updateTask(taskId, { status: 'failed', message: err.message });
+            }
+        })();
+        return taskId;
+    }
+
+    if (task.type === 'download_kuwo') {
+        const { id, level = 'exhigh' } = payload;
+        const taskId = taskManager.createTask('download_kuwo', `Retrying Kuwo song ${id}`, { id, level }, undefined, 3);
+        (async () => {
+            try {
+                taskManager.updateTask(taskId, { status: 'running', progress: 10 });
+                await downloadAndTagKuwoSong(MUSIC_DIR, id, level, taskId);
+                await finishDownloadTask(taskId);
+                taskManager.updateTask(taskId, { status: 'completed', progress: 100 });
+            } catch (err: any) {
+                taskManager.updateTask(taskId, { status: 'failed', message: err.message });
+            }
+        })();
+        return taskId;
+    }
+
+    throw new Error('Retry is not supported for this task type');
+};
 
 app.get('/api/settings/config', (req, res) => {
     const configPath = path.join(dataDir, 'settings.json');
@@ -1350,7 +1857,10 @@ cron.schedule(CRON_SCHEDULE, async () => {
     await processPendingTracks();
 });
 
-app.get('/api/tasks', (req, res) => res.json({ success: true, data: taskManager.getRecentTasks(50) }));
+app.get('/api/tasks', (req, res) => {
+    const limit = Math.min(parseInt(req.query.limit as string) || 50, 200);
+    res.json({ success: true, data: taskManager.getRecentTasks(limit) });
+});
 app.post('/api/tasks/:id/cancel', (req, res) => {
     taskManager.cancelTask(req.params.id);
     res.json({ success: true });
@@ -1359,6 +1869,34 @@ app.get('/api/tasks/:id', (req, res) => {
     const task = taskManager.getTask(req.params.id);
     if (task) res.json({ success: true, data: task });
     else res.status(404).json({ success: false, error: 'Task not found' });
+});
+app.post('/api/tasks/:id/retry', (req, res) => {
+    try {
+        const task = taskManager.getTask(req.params.id);
+        if (!task) {
+            return res.status(404).json({ success: false, error: 'Task not found' });
+        }
+        const taskId = retryTaskByType(task);
+        res.json({ success: true, taskId });
+    } catch (e: any) {
+        res.status(400).json({ success: false, error: e.message });
+    }
+});
+app.post('/api/tasks/:id/priority', (req, res) => {
+    try {
+        const task = taskManager.getTask(req.params.id);
+        if (!task) {
+            return res.status(404).json({ success: false, error: 'Task not found' });
+        }
+        const priority = Number(req.body?.priority);
+        if (Number.isNaN(priority)) {
+            return res.status(400).json({ success: false, error: 'Priority must be a number' });
+        }
+        taskManager.setPriority(req.params.id, priority);
+        res.json({ success: true });
+    } catch (e: any) {
+        res.status(400).json({ success: false, error: e.message });
+    }
 });
 app.post('/api/tasks/cleanup', (req, res) => {
     taskManager.cleanupOldTasks();
