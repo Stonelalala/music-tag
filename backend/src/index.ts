@@ -36,6 +36,10 @@ import {
 } from './scraper';
 import { downloadAndTagKugouSong } from './kugou';
 import { downloadAndTagKuwoSong } from './kuwo';
+import {
+    buildDuplicateGroups,
+    type DuplicateTrackCandidate
+} from './utils/duplicate_finder';
 
 const app = express();
 
@@ -1119,41 +1123,90 @@ app.post('/api/tracks/delete', (req, res) => {
 // Advanced: Deduplication finder
 app.get('/api/tracks/duplicates', (req, res) => {
     try {
-        const duplicates = db.prepare(`
-            SELECT title, COUNT(*) as c
-            FROM tracks 
-            WHERE title !='' AND title IS NOT NULL
-            GROUP BY title
-            HAVING c > 1
-        `).all() as any[];
+        const tracks = db.prepare(`
+            SELECT
+                t.id,
+                t.filepath,
+                t.filename,
+                t.extension,
+                t.title,
+                COALESCE(t.artist, '') as artist,
+                COALESCE(t.album, '') as album,
+                COALESCE(t.duration, 0) as duration,
+                COALESCE(t.bitrate, 0) as bitrate,
+                COALESCE(t.sample_rate, 0) as sample_rate,
+                COALESCE(t.size, 0) as size,
+                COALESCE(t.scrape_status, 0) as scrape_status
+            FROM tracks t
+            INNER JOIN (
+                SELECT title
+                FROM tracks
+                WHERE title != '' AND title IS NOT NULL
+                GROUP BY title
+                HAVING COUNT(*) > 1
+            ) dup ON dup.title = t.title
+            WHERE t.title != '' AND t.title IS NOT NULL
+            ORDER BY t.title ASC, t.artist ASC, t.duration ASC
+        `).all() as Array<{
+            id: string;
+            filepath: string;
+            filename: string;
+            extension: string;
+            title: string;
+            artist: string;
+            album: string;
+            duration: number;
+            bitrate: number;
+            sample_rate: number;
+            size: number;
+            scrape_status: number;
+        }>;
 
-        const result = duplicates.map(group => {
-            const files = db.prepare('SELECT id, filepath, filename, extension, scrape_status, artist FROM tracks WHERE title = ?').all(group.title) as any[];
-            const mappedFiles = files.map(f => {
-                let size = 0;
-                try { size = fs.statSync(f.filepath).size; } catch (e) { }
-                return {
-                    id: f.id,
-                    filepath: f.filepath,
-                    filename: f.filename,
-                    size: size,
-                    extension: f.extension,
-                    status: f.scrape_status,
-                    artist: f.artist || 'Unknown Artist'
-                };
-            });
-            // sort by size descending so usually high quality is on top
-            mappedFiles.sort((a, b) => b.size - a.size);
-
-            const uniqueArtists = Array.from(new Set(mappedFiles.map(f => f.artist)));
-            const displayArtist = uniqueArtists.join(' / ');
+        const candidates: DuplicateTrackCandidate[] = tracks.map(track => {
+            let size = Number(track.size) || 0;
+            if (size <= 0) {
+                try {
+                    size = fs.statSync(track.filepath).size;
+                } catch (e) { }
+            }
 
             return {
-                title: group.title,
-                artist: displayArtist,
-                files: mappedFiles
+                id: track.id,
+                filepath: track.filepath,
+                filename: track.filename,
+                extension: track.extension,
+                title: track.title,
+                artist: track.artist || 'Unknown Artist',
+                album: track.album || 'Unknown Album',
+                duration: Number(track.duration) || 0,
+                bitrate: Number(track.bitrate) || 0,
+                sampleRate: Number(track.sample_rate) || 0,
+                size,
+                scrapeStatus: Number(track.scrape_status) || 0
             };
         });
+
+        const result = buildDuplicateGroups(candidates).map(group => ({
+            title: group.title,
+            artist: group.artist,
+            recommendedKeepId: group.recommendedKeepId,
+            files: group.files.map(file => ({
+                id: file.id,
+                filepath: file.filepath,
+                filename: file.filename,
+                size: file.size,
+                extension: file.extension,
+                status: file.scrapeStatus,
+                artist: file.artist || 'Unknown Artist',
+                album: file.album || 'Unknown Album',
+                duration: file.duration,
+                bitrate: file.bitrate,
+                sampleRate: file.sampleRate,
+                qualityScore: file.qualityScore,
+                isRecommendedKeep: file.isRecommendedKeep,
+                recommendedDelete: file.recommendedDelete
+            }))
+        }));
 
         res.json({ success: true, data: result });
     } catch (e: any) {
