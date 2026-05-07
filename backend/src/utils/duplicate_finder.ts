@@ -26,6 +26,11 @@ export interface DuplicateTrackGroup {
   files: DuplicateTrackFile[];
 }
 
+import {
+  normalizeComparableText,
+  normalizeTrackTitleKey,
+} from './track_signature';
+
 const UNKNOWN_ARTISTS = new Set([
   '',
   'unknown',
@@ -54,9 +59,9 @@ const COPY_FILENAME_PATTERN = /(copy|duplicate|副本|拷贝|重复)/i;
 const DURATION_TOLERANCE_SECONDS = 3;
 
 const normalizeText = (value: string | null | undefined) =>
-  (value ?? '').normalize('NFKC').trim().toLowerCase().replace(/\s+/g, ' ');
+  normalizeComparableText(value);
 
-const normalizeTitleKey = (title: string) => normalizeText(title);
+const normalizeTitleKey = (title: string) => normalizeTrackTitleKey(title);
 
 const normalizeArtistToken = (token: string) =>
   token

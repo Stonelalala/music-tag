@@ -173,7 +173,8 @@ export async function fetchNeteasePlaylist(id: number | string, cookie: string =
                     title: t2s(t.name || ''),
                     artist: t2s(t.ar ? t.ar.map((a: any) => a.name).join(', ') : ''),
                     album: t2s(t.al?.name || ''),
-                    coverUrl: t.al?.picUrl || null
+                    coverUrl: t.al?.picUrl || null,
+                    duration: t.dt ? t.dt / 1000 : 0
                 })) : []
             };
         }

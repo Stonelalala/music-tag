@@ -40,6 +40,7 @@ import {
     buildDuplicateGroups,
     type DuplicateTrackCandidate
 } from './utils/duplicate_finder';
+import { runNeteaseDailySyncPipeline } from './netease_daily_sync';
 
 const app = express();
 
@@ -1004,15 +1005,47 @@ app.get('/api/discovery/recent', (req, res) => {
 // Discovery: Recommended Albums
 app.get('/api/discovery/albums', (req, res) => {
     try {
-        // Get unique albums with a sample track and artist
         const rows = db.prepare(`
-            SELECT album, artist, id 
+            SELECT
+                album,
+                COALESCE(NULLIF(TRIM(artist), ''), 'Unknown Artist') AS artist,
+                MIN(id) AS id
             FROM tracks 
-            GROUP BY album 
+            WHERE album IS NOT NULL
+              AND TRIM(album) <> ''
+            GROUP BY album, COALESCE(NULLIF(TRIM(artist), ''), 'Unknown Artist')
             ORDER BY RANDOM() 
             LIMIT 20
         `).all() as any[];
         res.json({ success: true, data: rows });
+    } catch (e: any) {
+        res.status(500).json({ success: false, error: e.message });
+    }
+});
+
+app.get('/api/discovery/album-tracks', (req, res) => {
+    try {
+        const album = String(req.query.album || '').trim();
+        const artist = String(req.query.artist || '').trim();
+        if (!album) {
+            return res.status(400).json({ success: false, error: 'Album is required' });
+        }
+
+        const conditions = ['album = ?'];
+        const values: string[] = [album];
+        if (artist) {
+            conditions.push(`COALESCE(NULLIF(TRIM(artist), ''), 'Unknown Artist') = ?`);
+            values.push(artist);
+        }
+
+        const tracks = db.prepare(`
+            SELECT *
+            FROM tracks
+            WHERE ${conditions.join(' AND ')}
+            ORDER BY filepath ASC, title COLLATE NOCASE ASC
+        `).all(...values) as any[];
+
+        res.json({ success: true, data: tracks });
     } catch (e: any) {
         res.status(500).json({ success: false, error: e.message });
     }
@@ -1906,8 +1939,11 @@ app.get(/.*/, (req, res, next) => {
 
 const CRON_SCHEDULE = process.env.CRON_SCHEDULE || '0 2 * * *';
 cron.schedule(CRON_SCHEDULE, async () => {
-    await scanLibrary(MUSIC_DIR);
-    await processPendingTracks();
+    try {
+        await runNeteaseDailySyncPipeline(MUSIC_DIR, getStoredConfig().neteaseCookie || '');
+    } catch (error) {
+        console.error('[Cron] NetEase daily sync failed:', error);
+    }
 });
 
 app.get('/api/tasks', (req, res) => {
