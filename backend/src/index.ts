@@ -41,6 +41,10 @@ import {
     type DuplicateTrackCandidate
 } from './utils/duplicate_finder';
 import { runNeteaseDailySyncPipeline } from './netease_daily_sync';
+import {
+    getUserPreferences,
+    isNeteaseDailySyncEnabled
+} from './user_preferences';
 
 const app = express();
 
@@ -117,18 +121,6 @@ const upsertUserPreference = db.prepare(`
         preference_value = excluded.preference_value,
         updated_at = CURRENT_TIMESTAMP
 `);
-
-const getUserPreferences = (userId: string) =>
-    db.prepare(`
-        SELECT preference_key, preference_value, updated_at
-        FROM user_preferences
-        WHERE user_id = ?
-        ORDER BY updated_at DESC
-    `).all(userId) as Array<{
-        preference_key: string;
-        preference_value: string | null;
-        updated_at: string;
-    }>;
 
 // Auth Routes
 app.post('/api/auth/login', (req, res) => {
@@ -1940,6 +1932,10 @@ app.get(/.*/, (req, res, next) => {
 const CRON_SCHEDULE = process.env.CRON_SCHEDULE || '0 2 * * *';
 cron.schedule(CRON_SCHEDULE, async () => {
     try {
+        if (!isNeteaseDailySyncEnabled()) {
+            console.log('[Cron] NetEase daily sync skipped because it is disabled.');
+            return;
+        }
         await runNeteaseDailySyncPipeline(MUSIC_DIR, getStoredConfig().neteaseCookie || '');
     } catch (error) {
         console.error('[Cron] NetEase daily sync failed:', error);
